@@ -21,7 +21,7 @@ export default function CaptainControls({ socket, leagueCode, currentBid, myTeam
 
     return (
         <div className="card" style={{ textAlign: 'center' }}>
-            <h3 style={{ marginBottom: '1rem' }}>Your Paddle</h3>
+            <h3 style={{ marginBottom: '1rem' }}>Bids</h3>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 {currentBid.amount === 0 ? (

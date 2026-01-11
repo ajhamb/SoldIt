@@ -1,19 +1,24 @@
 :root {
-  --bg-dark: #0f172a; /* Slate 900 */
-  --bg-card: #1e293b; /* Slate 800 */
-  --primary: #FFD700; /* Gold */
-  --secondary: #06b6d4; /* Neon Cyan */
-  --accent: #d946ef; /* Neon Magenta */
-  
+  --bg-dark: #0f172a;
+  /* Slate 900 */
+  --bg-card: #1e293b;
+  /* Slate 800 */
+  --primary: #FFD700;
+  /* Gold */
+  --secondary: #06b6d4;
+  /* Neon Cyan */
+  --accent: #d946ef;
+  /* Neon Magenta */
+
   --text-main: #f1f5f9;
   --text-muted: #94a3b8;
-  
+
   --font-main: 'Inter', system-ui, sans-serif;
-  
+
   --spacing-sm: 0.5rem;
   --spacing-md: 1rem;
   --spacing-lg: 2rem;
-  
+
   --radius: 8px;
   --shadow-glow: 0 0 10px rgba(255, 215, 0, 0.3);
 }
@@ -45,9 +50,17 @@ button {
   padding: var(--spacing-md);
 }
 
-.text-gold { color: var(--primary); }
-.text-cyan { color: var(--secondary); }
-.text-magenta { color: var(--accent); }
+.text-gold {
+  color: var(--primary);
+}
+
+.text-cyan {
+  color: var(--secondary);
+}
+
+.text-magenta {
+  color: var(--accent);
+}
 
 .card {
   background: var(--bg-card);
@@ -69,10 +82,12 @@ button {
   color: #000;
   box-shadow: 0 0 15px rgba(255, 215, 0, 0.4);
 }
+
 .btn-primary:hover:not(:disabled) {
   transform: translateY(-2px);
   box-shadow: 0 0 25px rgba(255, 215, 0, 0.6);
 }
+
 .btn-primary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -81,4 +96,43 @@ button {
 .neon-border {
   border: 1px solid var(--primary);
   box-shadow: 0 0 5px var(--primary), inset 0 0 5px var(--primary);
+}
+
+/* --- RESPONSIVE HELPERS --- */
+.responsive-layout {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: var(--spacing-md);
+  flex: 1;
+  min-height: 0;
+  /* Important for nested scroll */
+}
+
+.responsive-sidebar {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+@media (max-width: 768px) {
+  .responsive-layout {
+    display: flex;
+    flex-direction: column;
+    height: auto;
+    flex: none;
+    /* Allow it to grow */
+  }
+
+  .responsive-sidebar {
+    height: 300px;
+    /* Fixed height for standings on mobile */
+    flex-shrink: 0;
+  }
+
+  .container {
+    height: auto !important;
+    /* Override fixed 100vh */
+    min-height: 100vh;
+  }
 }

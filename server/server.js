@@ -3,8 +3,35 @@ const http = require('http');
 const { Server } = require("socket.io");
 const cors = require('cors');
 const socketHandler = require('./socketHandler');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
+// --- LOGGING SETUP ---
+const logFile = fs.createWriteStream(path.join(__dirname, 'logfile.txt'), { flags: 'a' });
+const originalLog = console.log;
+const originalError = console.error;
+
+function getTimestamp() {
+    return new Date().toISOString().replace('T', ' ').substring(0, 19);
+}
+
+console.log = function (...args) {
+    const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' ');
+    const logLine = `[${getTimestamp()}] ${msg}`;
+    logFile.write(logLine + '\n');
+    // originalLog.apply(console, args); // DISABLED: Log only to file
+};
+
+console.error = function (...args) {
+    const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' ');
+    const logLine = `[${getTimestamp()}] [ERROR] ${msg}`;
+    logFile.write(logLine + '\n');
+    // originalError.apply(console, args); // DISABLED: Log only to file
+};
+
+console.log("--- SERVER STARTUP ---");
+
 app.use(cors());
 
 const server = http.createServer(app);

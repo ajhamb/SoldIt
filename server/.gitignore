@@ -7,6 +7,7 @@ node_modules/
 # Logs and runtime data
 *.log
 npm-debug.log*
+logfile.txt
 
 # Backups (Auction snapshots)
 backups/

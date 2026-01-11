@@ -25,11 +25,13 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
     const getMaxSquad = () => config?.playersPerTeam || 15;
 
     return (
-        <div className="container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', padding: '1rem', gap: '1rem', boxSizing: 'border-box' }}>
+        <div className="container" style={{ display: 'flex', flexDirection: 'column', padding: '1rem', gap: '1rem', boxSizing: 'border-box' }}>
 
             {/* TOP ROW: HEADER + STAGE + SIDEBAR */}
             {/* flex-1 to take up available space, minHeight 0 to allow internal scrolling */}
-            <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 300px', gap: '1rem', minHeight: 0 }}>
+            {/* TOP ROW: HEADER + STAGE + SIDEBAR */}
+            {/* flex-1 to take up available space, minHeight 0 to allow internal scrolling */}
+            <div className="responsive-layout">
 
                 {/* LEFT COLUMN: HEADER & STAGE */}
                 <div style={{ display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
@@ -54,7 +56,12 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
                                 Players ({players?.length})
                             </button>
                             <span style={{ padding: '0.5rem 1rem', background: '#222', borderRadius: '4px', border: '1px solid #444' }}>
-                                <strong className={role === 'ADMIN' ? 'text-magenta' : 'text-cyan'}>{name}</strong>
+                                <strong
+                                    className={role === 'ADMIN' ? 'text-magenta' : 'text-cyan'}
+                                    style={{ fontSize: '1.5rem', textTransform: 'uppercase', textShadow: '0 0 5px rgba(255,255,255,0.3)' }}
+                                >
+                                    {name}
+                                </strong>
                             </span>
                         </div>
                     </header>
@@ -107,7 +114,7 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
                 </div>
 
                 {/* RIGHT COLUMN: STANDINGS */}
-                <div className="card" style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', height: '100%' }}>
+                <div className="card responsive-sidebar">
                     <h3 style={{ marginBottom: '1rem', textTransform: 'uppercase', borderBottom: '1px solid #444', paddingBottom: '0.5rem' }}>Standings</h3>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1 }}>
                         {teams && teams.map(t => (
@@ -133,7 +140,14 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
 
             {/* MODALS */}
             {showPlayers && (
-                <PlayerListView players={players || []} teams={teams || []} onClose={() => setShowPlayers(false)} />
+                <PlayerListView
+                    players={players || []}
+                    teams={teams || []}
+                    onClose={() => setShowPlayers(false)}
+                    socket={socket}
+                    role={role}
+                    leagueCode={leagueCode}
+                />
             )}
             {showRules && (
                 <RulesModal config={config} onClose={() => setShowRules(false)} />

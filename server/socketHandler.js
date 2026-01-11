@@ -192,6 +192,112 @@ module.exports = (io, socket, data) => {
         broadcastUpdate(io, leagueCode, league);
     });
 
+    // --- MANUAL ASSIGN (ADMIN REASSIGNMENT) ---
+    socket.on('ADMIN_ASSIGN_PLAYER', ({ leagueCode, playerId, teamName, price }) => {
+        const league = data.leagues.get(leagueCode);
+        if (!league) return;
+        if (socket.id !== league.adminId) return;
+
+        const player = league.players.find(p => p.id === playerId);
+        const targetTeam = league.teams.find(t => t.name === teamName);
+        const assignPrice = parseInt(price);
+
+        if (!player || !targetTeam || isNaN(assignPrice)) return;
+
+        // --- VALIDATIONS ---
+
+        // 1. Price Limits
+        if (assignPrice < league.config.basePrice) {
+            socket.emit('ERROR', { message: `Price cannot be lower than Base Price (${league.config.basePrice})` });
+            return;
+        }
+        if (league.config.maxBid && assignPrice > league.config.maxBid) {
+            socket.emit('ERROR', { message: `Price cannot exceed Max Bid Limit (${league.config.maxBid})` });
+            return;
+        }
+
+        // 2. Squad Size Limit
+        // Only check if we are adding a NEW player to this team (not just adjusting price for same team)
+        if (player.soldTo !== targetTeam.name) {
+            if (targetTeam.squad.length >= league.config.playersPerTeam) {
+                socket.emit('ERROR', { message: `Team ${targetTeam.name} is already full! (Max ${league.config.playersPerTeam})` });
+                return;
+            }
+        }
+
+        // PRE-CALCULATION
+        let netBudget = targetTeam.budget;
+
+        // If player is currently owned by THIS target team, they will get a refund first
+        if (player.status === 'SOLD' && player.soldTo === targetTeam.name) {
+            netBudget += player.soldAt;
+        }
+
+        // Check Affordability
+        if (netBudget < assignPrice) {
+            socket.emit('ERROR', { message: `Insufficient Budget! ${targetTeam.name} needs ${assignPrice} but has effective ${netBudget}.` });
+            return;
+        }
+
+        // EXECUTE
+        // 1. Refund Old Owner (if any)
+        if (player.status === 'SOLD' && player.soldTo) {
+            const previousTeam = league.teams.find(t => t.name === player.soldTo);
+            if (previousTeam) {
+                previousTeam.squad = previousTeam.squad.filter(p => p.id !== player.id);
+                previousTeam.budget += player.soldAt;
+            }
+        }
+
+        // 2. Charge New Owner
+        targetTeam.budget -= assignPrice;
+        targetTeam.squad.push(player);
+
+        // 3. Update Player
+        player.status = 'SOLD';
+        player.soldTo = targetTeam.name;
+        player.soldAt = assignPrice;
+
+        // Log Activity
+        league.activityLog.unshift({ type: 'SOLD', text: `ADMIN: Assigned ${player.name} to ${targetTeam.name} for ${assignPrice}` });
+
+        console.log(`[ADMIN ASSIGN] ${player.name} -> ${targetTeam.name} (${assignPrice})`);
+        saveSnapshot(league);
+        broadcastUpdate(io, leagueCode, league);
+    });
+
+    // --- MANUAL UNASSIGN (ADMIN RELEASE) ---
+    socket.on('ADMIN_UNASSIGN_PLAYER', ({ leagueCode, playerId }) => {
+        const league = data.leagues.get(leagueCode);
+        if (!league) return;
+        if (socket.id !== league.adminId) return;
+
+        const player = league.players.find(p => p.id === playerId);
+        if (!player) return;
+
+        // Refund if sold
+        if (player.status === 'SOLD' && player.soldTo) {
+            const team = league.teams.find(t => t.name === player.soldTo);
+            if (team) {
+                team.squad = team.squad.filter(p => p.id !== player.id);
+                team.budget += player.soldAt;
+                console.log(`[UNASSIGN] Refunded ${team.name} ${player.soldAt}`);
+            }
+        }
+
+        // Reset Player
+        player.status = 'UNSOLD';
+        player.soldTo = null;
+        player.soldAt = null;
+
+        // Log
+        league.activityLog.unshift({ type: 'SKIP', text: `ADMIN: Unassigned/Released ${player.name}` });
+        console.log(`[UNASSIGN] Admin released ${player.name}`);
+
+        saveSnapshot(league);
+        broadcastUpdate(io, leagueCode, league);
+    });
+
     // --- CAPTAIN PASS ---
     socket.on('CAPTAIN_PASS', ({ leagueCode }) => {
         const league = data.leagues.get(leagueCode);
@@ -316,6 +422,10 @@ function pickNextPlayer(league, io, leagueCode) {
     league.currentPlayer = nextP;
     league.currentBid = { amount: 0, holder: null, holderName: null };
     league.bidHistory = []; // Reset history for new player
+
+    // Log Activity
+    league.activityLog.unshift({ type: 'NEW', text: `${nextP.name} is available for current bid` });
+    console.log(`[NEW] Player: ${nextP.name} (${nextP.category}, Base: ${nextP.basePrice})`);
 
     io.to(leagueCode).emit('NEW_PLAYER', {
         player: nextP,

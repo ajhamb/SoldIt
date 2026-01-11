@@ -20,6 +20,7 @@ function getColor(type) {
         case 'BID': return '#cyan'; // Cyan
         case 'SOLD': return '#22c55e'; // Green
         case 'SKIP': return '#ef4444'; // Red
+        case 'NEW': return '#ff0000'; // Bright Red
         case 'PASS': return '#777'; // Gray
         default: return '#fff';
     }

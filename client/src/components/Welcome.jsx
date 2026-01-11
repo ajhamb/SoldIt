@@ -103,7 +103,7 @@ export default function Welcome({ onJoin }) {
                             <input type="number" value={config.teamCount} onChange={e => setConfig({ ...config, teamCount: e.target.value })} style={inputStyle} />
                         </div>
                         <div>
-                            <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem' }}>Squad Size</label>
+                            <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem' }}>Squad Size (EXCLUDING CAPTAIN)</label>
                             <input type="number" value={config.playersPerTeam} onChange={e => setConfig({ ...config, playersPerTeam: e.target.value })} style={inputStyle} />
                         </div>
                         <div>
@@ -111,11 +111,11 @@ export default function Welcome({ onJoin }) {
                             <input type="number" value={config.budget} onChange={e => setConfig({ ...config, budget: e.target.value })} style={inputStyle} />
                         </div>
                         <div>
-                            <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem' }}>Base Price</label>
+                            <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem' }}>Base Price (Th)</label>
                             <input type="number" value={config.basePrice} onChange={e => setConfig({ ...config, basePrice: e.target.value })} style={inputStyle} />
                         </div>
                         <div>
-                            <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem' }}>Max Bid</label>
+                            <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem' }}>Max Bid(Th)</label>
                             <input type="number" value={config.maxBid} onChange={e => setConfig({ ...config, maxBid: e.target.value })} style={inputStyle} />
                         </div>
                     </div>
@@ -144,8 +144,8 @@ export default function Welcome({ onJoin }) {
                     </div>
 
                     <div>
-                        <label style={{ display: 'block', marginBottom: '0.5rem' }}>Your Name</label>
-                        <input type="text" value={name} onChange={e => setName(e.target.value)} style={inputStyle} placeholder="e.g. Captain Cool" />
+                        <label style={{ display: 'block', marginBottom: '0.5rem' }}>{role === 'ADMIN' ? 'League Name' : 'Team Name'}</label>
+                        <input type="text" value={name} onChange={e => setName(e.target.value)} style={inputStyle} placeholder={role === 'ADMIN' ? "e.g. Premier League" : "e.g. Royal Challengers"} />
                     </div>
 
                     <div style={{ marginBottom: '1rem' }}>

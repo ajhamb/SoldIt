@@ -1,8 +1,13 @@
 import { useState } from 'react';
 
-export default function PlayerListView({ players, teams, onClose }) {
+export default function PlayerListView({ players, teams, onClose, socket, role, leagueCode }) {
     const [filter, setFilter] = useState('ALL'); // ALL, SOLD, UNSOLD
     const [teamFilter, setTeamFilter] = useState('ALL'); // 'ALL' or specific team name
+
+    // Edit State
+    const [editPlayer, setEditPlayer] = useState(null);
+    const [editTeam, setEditTeam] = useState('');
+    const [editPrice, setEditPrice] = useState('');
 
     const filteredPlayers = players.filter(p => {
         // Status Filter
@@ -44,9 +49,27 @@ export default function PlayerListView({ players, teams, onClose }) {
         document.body.removeChild(link);
     };
 
+    const handleEditClick = (p) => {
+        setEditPlayer(p);
+        setEditTeam(p.soldTo || (teams[0] ? teams[0].name : ''));
+        setEditPrice(p.soldAt || p.basePrice || 20);
+    };
+
+    const handleSave = () => {
+        if (!editPlayer || !editTeam || !editPrice) return;
+
+        socket.emit('ADMIN_ASSIGN_PLAYER', {
+            leagueCode,
+            playerId: editPlayer.id,
+            teamName: editTeam,
+            price: editPrice
+        });
+        setEditPlayer(null); // Close modal
+    };
+
     return (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.9)', zIndex: 100, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '2rem' }}>
-            <div className="card" style={{ width: '100%', maxWidth: '900px', height: '90vh', display: 'flex', flexDirection: 'column' }}>
+            <div className="card" style={{ width: '100%', maxWidth: '900px', height: '90vh', display: 'flex', flexDirection: 'column', position: 'relative' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', borderBottom: '1px solid #444', paddingBottom: '1rem', alignItems: 'center' }}>
                     <h2>Player List ({players.length})</h2>
                     <div style={{ display: 'flex', gap: '1rem' }}>
@@ -76,8 +99,8 @@ export default function PlayerListView({ players, teams, onClose }) {
                     </select>
                 </div>
 
-                <div style={{ flex: 1, overflowY: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
+                    <table style={{ width: '100%', minWidth: '600px', borderCollapse: 'collapse', textAlign: 'left' }}>
                         <thead>
                             <tr style={{ background: '#333', color: '#aaa' }}>
                                 <th style={{ padding: '0.5rem' }}>Name</th>
@@ -85,6 +108,7 @@ export default function PlayerListView({ players, teams, onClose }) {
                                 <th style={{ padding: '0.5rem' }}>Status</th>
                                 <th style={{ padding: '0.5rem' }}>Sold To</th>
                                 <th style={{ padding: '0.5rem' }}>Price</th>
+                                {role === 'ADMIN' && <th style={{ padding: '0.5rem' }}>Edit</th>}
                             </tr>
                         </thead>
                         <tbody>
@@ -102,16 +126,77 @@ export default function PlayerListView({ players, teams, onClose }) {
                                     </td>
                                     <td style={{ padding: '0.8rem 0.5rem', color: 'var(--primary)' }}>{p.soldTo || '-'}</td>
                                     <td style={{ padding: '0.8rem 0.5rem' }}>{p.soldAt || '-'}</td>
+                                    {role === 'ADMIN' && (
+                                        <td style={{ padding: '0.8rem 0.5rem' }}>
+                                            <button
+                                                style={{ cursor: 'pointer', background: 'transparent', border: 'none', fontSize: '1.2rem' }}
+                                                onClick={() => handleEditClick(p)}
+                                            >
+                                                ✏️
+                                            </button>
+                                        </td>
+                                    )}
                                 </tr>
                             ))}
                             {filteredPlayers.length === 0 && (
                                 <tr>
-                                    <td colSpan="5" style={{ padding: '2rem', textAlign: 'center', color: '#666' }}>No players found</td>
+                                    <td colSpan="6" style={{ padding: '2rem', textAlign: 'center', color: '#666' }}>No players found</td>
                                 </tr>
                             )}
                         </tbody>
                     </table>
                 </div>
+
+                {/* EDIT MODAL */}
+                {editPlayer && (
+                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: '#222', padding: '2rem', borderRadius: '8px', border: '1px solid #555', boxShadow: '0 0 20px rgba(0,0,0,0.8)', zIndex: 200, width: '400px', maxWidth: '90%' }}>
+                        <h3 style={{ marginBottom: '0.5rem', color: 'var(--primary)' }}>Edit: {editPlayer.name}</h3>
+                        <p style={{ fontSize: '0.8rem', color: '#888', marginBottom: '1rem' }}>
+                            Adjust Price or Reassign Team. (Budget will update automatically)
+                        </p>
+
+                        <div style={{ marginBottom: '1rem' }}>
+                            <label style={{ display: 'block', marginBottom: '0.5rem' }}>Assign To Team:</label>
+                            <select
+                                value={editTeam}
+                                onChange={e => setEditTeam(e.target.value)}
+                                style={{ width: '100%', padding: '0.5rem', background: '#333', color: '#fff', border: '1px solid #555' }}
+                            >
+                                <option value="" disabled>Select Team</option>
+                                {teams.map(t => (
+                                    <option key={t.id} value={t.name}>{t.name} (Budget: {t.budget})</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div style={{ marginBottom: '1.5rem' }}>
+                            <label style={{ display: 'block', marginBottom: '0.5rem' }}>Price:</label>
+                            <input
+                                type="number"
+                                value={editPrice}
+                                onChange={e => setEditPrice(e.target.value)}
+                                style={{ width: '100%', padding: '0.5rem', background: '#333', color: '#fff', border: '1px solid #555' }}
+                            />
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '1rem' }}>
+                            <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleSave}>Confirm</button>
+                            <button
+                                className="btn"
+                                style={{ flex: 1, background: '#772222', border: '1px solid #aa4444', color: '#ffaaaa' }}
+                                onClick={() => {
+                                    if (confirm(`Are you sure you want to release ${editPlayer.name}? Money will be refunded.`)) {
+                                        socket.emit('ADMIN_UNASSIGN_PLAYER', { leagueCode, playerId: editPlayer.id });
+                                        setEditPlayer(null);
+                                    }
+                                }}
+                            >
+                                Release
+                            </button>
+                            <button className="btn" style={{ flex: 1, background: '#444' }} onClick={() => setEditPlayer(null)}>Cancel</button>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );
