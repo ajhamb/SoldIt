@@ -5,8 +5,13 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    allowedHosts: [
-      'stevens-cheque-scholarship-extra.trycloudflare.com'
-    ]
+    allowedHosts: true,
+    proxy: {
+      '/api': 'http://localhost:3000', // Redirects frontend/api to backend
+      '/socket.io': {
+        target: 'http://localhost:3000',
+        ws: true
+      }
+    }
   }
 })

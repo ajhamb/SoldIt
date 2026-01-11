@@ -52,6 +52,7 @@ module.exports = (io, socket, data) => {
                     currentPlayer: null,
                     currentPlayer: null,
                     currentBid: { amount: 0, holder: null, holderName: null },
+                    bidHistory: [], // Track bids for undo
                     state: 'WAITING', // WAITING, LIVE, PAUSED, ENDED
                     activityLog: [] // [{ type: 'BID', text: '...' }]
                 };
@@ -148,6 +149,9 @@ module.exports = (io, socket, data) => {
             }
         }
 
+        // Push current bid to history before updating (Deep copy)
+        league.bidHistory.push({ ...league.currentBid });
+
         // Update Bid
         league.currentBid = {
             amount: amount,
@@ -165,6 +169,27 @@ module.exports = (io, socket, data) => {
         saveSnapshot(league);
         io.to(leagueCode).emit('BID_UPDATE', league.currentBid);
         broadcastUpdate(io, leagueCode, league); // Broadcast for log update
+        broadcastUpdate(io, leagueCode, league); // Broadcast for log update
+    });
+
+    // --- UNDO BID ---
+    socket.on('UNDO_BID', ({ leagueCode }) => {
+        const league = data.leagues.get(leagueCode);
+        if (!league || league.state !== 'LIVE') return;
+        if (league.bidHistory.length === 0) return;
+
+        // Revert to previous bid
+        const previousBid = league.bidHistory.pop();
+        league.currentBid = previousBid;
+
+        // Log Activity
+        league.activityLog.unshift({ type: 'UNDO', text: `⚠️ Previous Bid UNDONE by Admin` });
+
+        console.log(`[UNDO] Bid reverted to ${previousBid.amount} by ${previousBid.holderName || 'None'}`);
+        saveSnapshot(league);
+
+        io.to(leagueCode).emit('BID_UPDATE', league.currentBid);
+        broadcastUpdate(io, leagueCode, league);
     });
 
     // --- CAPTAIN PASS ---
@@ -290,6 +315,7 @@ function pickNextPlayer(league, io, leagueCode) {
     const nextP = league.unpickedPlayers.pop();
     league.currentPlayer = nextP;
     league.currentBid = { amount: 0, holder: null, holderName: null };
+    league.bidHistory = []; // Reset history for new player
 
     io.to(leagueCode).emit('NEW_PLAYER', {
         player: nextP,

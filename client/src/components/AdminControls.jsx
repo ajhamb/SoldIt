@@ -20,6 +20,16 @@ export default function AdminControls({ socket, leagueCode }) {
             >
                 Skip Player
             </button>
+            <button className="btn"
+                style={{ background: '#772222', border: '1px solid #aa4444', color: '#ffaaaa' }}
+                onClick={() => {
+                    if (confirm("Undo the last bid? This will revert to the previous price.")) {
+                        socket.emit('UNDO_BID', { leagueCode });
+                    }
+                }}
+            >
+                Undo Bid ↩️
+            </button>
 
             <button className="btn"
                 style={{ background: '#552222', border: '1px solid #774444', color: '#eaa' }}

@@ -3,8 +3,8 @@ import io from 'socket.io-client';
 import Welcome from './components/Welcome';
 import AuctionRoom from './components/AuctionRoom';
 
-// Connect to backend (adjust URL if needed, e.g. defined in .env)
-const socket = io('http://localhost:3000');
+// Connect to backend (relative path for proxy support)
+const socket = io();
 
 function App() {
   const [role, setRole] = useState(null); // 'ADMIN' | 'CAPTAIN'

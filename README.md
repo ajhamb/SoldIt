@@ -52,13 +52,5 @@ Enjoy your customized auction! 🏏
 ## Misc CloudFlare hosting
 - Start Tunnel cloudflared tunnel --url http://localhost:3000
 - Define in vite 
-import { defineConfig } from 'vite'
 
-export default defineConfig({
-  server: {
-    allowedHosts: [
-      'stevens-cheque-scholarship-extra.trycloudflare.com' // Cloudflare Tunnel Domain
-    ]
-  }
-})
 
