@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 
-export default function CaptainControls({ socket, leagueCode, currentBid, myTeam, basePrice, maxBid, hasPassed }) {
+export default function CaptainControls({ socket, leagueCode, currentBid, myTeam, basePrice, maxBid, hasPassed, activeTurn }) {
+    // Determine if it's my turn
+    const isMyTurn = myTeam.name === activeTurn;
+
     // Determine min bid: If 0 (nobid), min is basePrice. Else current + 20.
     const effectiveCurrent = currentBid.amount || 0;
     const nextMinBid = effectiveCurrent === 0 ? basePrice : effectiveCurrent + 20;
@@ -13,7 +16,7 @@ export default function CaptainControls({ socket, leagueCode, currentBid, myTeam
     }, [currentBid.amount, basePrice]);
 
     const placeBid = () => {
-        if (hasPassed) return;
+        if (!isMyTurn || hasPassed) return;
         const amount = parseInt(customBid);
         if (isNaN(amount)) return alert("Please enter a valid number");
 
@@ -30,8 +33,10 @@ export default function CaptainControls({ socket, leagueCode, currentBid, myTeam
     };
 
     return (
-        <div className="card" style={{ textAlign: 'center', opacity: hasPassed ? 0.7 : 1 }}>
-            <h3 style={{ marginBottom: '1rem' }}>{hasPassed ? 'You have Passed 🛑' : 'Place Bid'}</h3>
+        <div className="card" style={{ textAlign: 'center', opacity: (hasPassed || !isMyTurn) ? 0.7 : 1, transition: 'all 0.3s ease' }}>
+            <h3 style={{ marginBottom: '1rem', color: isMyTurn ? 'var(--primary)' : '#888' }}>
+                {hasPassed ? 'You have Passed 🛑' : isMyTurn ? 'YOUR TURN TO BID! 🪙' : `Waiting for ${activeTurn || 'next round'}...`}
+            </h3>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center' }}>
                 <div style={{ display: 'flex', gap: '0.5rem', width: '100%', justifyContent: 'center' }}>
@@ -39,24 +44,25 @@ export default function CaptainControls({ socket, leagueCode, currentBid, myTeam
                         type="number"
                         value={customBid}
                         onChange={e => setCustomBid(e.target.value)}
-                        disabled={hasPassed}
+                        disabled={hasPassed || !isMyTurn}
                         style={{
                             padding: '1rem',
                             width: '120px',
                             borderRadius: '4px',
-                            border: '1px solid #555',
-                            background: hasPassed ? '#111' : '#222',
-                            color: hasPassed ? '#555' : '#fff',
+                            border: `1px solid ${isMyTurn ? 'var(--primary)' : '#555'}`,
+                            background: (hasPassed || !isMyTurn) ? '#111' : '#222',
+                            color: (hasPassed || !isMyTurn) ? '#555' : '#fff',
                             fontSize: '1.5rem',
                             textAlign: 'center',
-                            fontWeight: 'bold'
+                            fontWeight: 'bold',
+                            boxShadow: isMyTurn ? '0 0 10px rgba(255, 215, 0, 0.2)' : 'none'
                         }}
                     />
                     <button
                         className="btn btn-primary"
                         style={{ padding: '0 2rem', fontSize: '1.2rem' }}
                         onClick={placeBid}
-                        disabled={hasPassed}
+                        disabled={hasPassed || !isMyTurn}
                     >
                         BID
                     </button>
@@ -70,11 +76,18 @@ export default function CaptainControls({ socket, leagueCode, currentBid, myTeam
                 </div>
 
                 <button className="btn"
-                    style={{ width: '100%', background: hasPassed ? '#333' : '#ff3333', color: hasPassed ? '#666' : '#fff', fontSize: '1rem', fontWeight: 'bold', marginTop: '0.5rem' }}
+                    style={{
+                        width: '100%',
+                        background: (hasPassed || !isMyTurn) ? '#333' : '#ff3333',
+                        color: (hasPassed || !isMyTurn) ? '#666' : '#fff',
+                        fontSize: '1rem',
+                        fontWeight: 'bold',
+                        marginTop: '0.5rem'
+                    }}
                     onClick={() => socket.emit('CAPTAIN_PASS', { leagueCode })}
-                    disabled={hasPassed}
+                    disabled={hasPassed || !isMyTurn}
                 >
-                    {hasPassed ? 'PASSED 🛑' : 'PASS 🛑'}
+                    {hasPassed ? 'PASSED 🛑' : isMyTurn ? 'PASS TURN 🛑' : 'WAITING...'}
                 </button>
 
                 <div style={{ marginTop: '0.5rem', fontSize: '1rem', fontWeight: 'bold', color: myTeam.budget < customBid ? 'red' : 'green' }}>

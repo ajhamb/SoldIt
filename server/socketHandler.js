@@ -27,7 +27,8 @@ module.exports = (io, socket, data) => {
                         status: 'WAITING'
                     }));
                 } else {
-                    initialPlayers = generateMockPlayers();
+                    socket.emit('ERROR', { message: "Cannot create league without players! Please add players manually or via CSV." });
+                    return;
                 }
 
                 // Create new league
@@ -40,9 +41,6 @@ module.exports = (io, socket, data) => {
                         playersPerTeam: parseInt(config.playersPerTeam) || 9,
                         budget: parseInt(config.budget) || 1000,
                         basePrice: basePrice,
-                        playersPerTeam: parseInt(config.playersPerTeam) || 15,
-                        budget: parseInt(config.budget) || 10000,
-                        basePrice: basePrice,
                         maxBid: parseInt(config.maxBid) || Infinity // No limit if not set
                     },
                     adminPin: Math.floor(100000 + Math.random() * 900000).toString(),
@@ -50,10 +48,12 @@ module.exports = (io, socket, data) => {
                     players: initialPlayers,
                     unpickedPlayers: [...initialPlayers], // Copy for randomizer
                     currentPlayer: null,
-                    currentPlayer: null,
                     currentBid: { amount: 0, holder: null, holderName: null },
                     bidHistory: [], // Track bids for undo
-                    passedTeams: [], // Teams that passed on CURRENT player
+                    passedTeams: [], // Teams that passed on CURRENT player (storing team names)
+                    biddingOrder: [], // Randomized order of team names
+                    activeTurn: null, // Team name whose turn it is
+                    roundRobinStartIndex: -1, // Which index in biddingOrder starts for this player
                     state: 'WAITING', // WAITING, LIVE, PAUSED, ENDED
                     activityLog: [] // [{ type: 'BID', text: '...' }]
                 };
@@ -116,9 +116,20 @@ module.exports = (io, socket, data) => {
         const league = data.leagues.get(leagueCode);
         if (!league) return;
 
+        // Validation: All teams must be joined
+        if (league.teams.length < league.config.teamCount) {
+            socket.emit('ERROR', { message: `Cannot start! Only ${league.teams.length}/${league.config.teamCount} teams joined.` });
+            return;
+        }
+
         league.state = 'LIVE';
-        // Randomize
+        // Randomize Players
         shuffleArray(league.unpickedPlayers);
+
+        // Initialize Round Robin Order
+        league.biddingOrder = league.teams.map(t => t.name);
+        shuffleArray(league.biddingOrder);
+        console.log(`[ORDER] Bidding order for ${leagueCode}: ${league.biddingOrder.join(' -> ')}`);
 
         pickNextPlayer(league, io, leagueCode);
     });
@@ -130,6 +141,12 @@ module.exports = (io, socket, data) => {
 
         const team = league.teams.find(t => t.id === socket.id);
         if (!team) return;
+
+        // Round Robin: Check Turn
+        if (league.activeTurn && team.name !== league.activeTurn) return;
+
+        // Pass Restriction
+        if (league.passedTeams && league.passedTeams.includes(team.name)) return;
 
         // Validation
         if (!league.currentPlayer) return;
@@ -169,9 +186,12 @@ module.exports = (io, socket, data) => {
 
         console.log(`[BID] ${team.name} bid ${amount} on ${league.currentPlayer.name}`);
         saveSnapshot(league);
+
+        // Advance Turn
+        findNextTurn(league);
+
         io.to(leagueCode).emit('BID_UPDATE', league.currentBid);
-        broadcastUpdate(io, leagueCode, league); // Broadcast for log update
-        broadcastUpdate(io, leagueCode, league); // Broadcast for log update
+        broadcastUpdate(io, leagueCode, league);
     });
 
     // --- UNDO BID ---
@@ -204,6 +224,11 @@ module.exports = (io, socket, data) => {
         league.currentBid = { amount: 0, holder: null, holderName: null };
         league.bidHistory = [];
         league.passedTeams = []; // Allow everyone to bid again
+
+        // Reset turn to the original starter for this player
+        if (league.biddingOrder.length > 0) {
+            league.activeTurn = league.biddingOrder[league.roundRobinStartIndex % league.biddingOrder.length];
+        }
 
         // Log Activity
         league.activityLog.unshift({ type: 'UNDO', text: `🔄 Bidding RESTARTED by Admin` });
@@ -329,16 +354,23 @@ module.exports = (io, socket, data) => {
         const team = league.teams.find(t => t.id === socket.id);
         if (!team) return;
 
+        // Turn Check
+        if (league.activeTurn && team.name !== league.activeTurn) return;
+
         league.activityLog.unshift({ type: 'PASS', text: `${team.name} passed` });
 
         // Add to passed teams
         if (!league.passedTeams) league.passedTeams = [];
-        if (!league.passedTeams.includes(socket.id)) {
-            league.passedTeams.push(socket.id);
+        if (!league.passedTeams.includes(team.name)) {
+            league.passedTeams.push(team.name);
         }
 
         console.log(`[PASS] ${team.name} passed on ${league.currentPlayer.name}`);
         saveSnapshot(league);
+
+        // Advance Turn
+        findNextTurn(league);
+
         broadcastUpdate(io, leagueCode, league);
     });
 
@@ -437,7 +469,9 @@ function broadcastUpdate(io, leagueCode, league) {
         currentPlayer: league.currentPlayer,
         players: league.players, // Send full list for Admin view
         activityLog: league.activityLog || [],
-        passedTeams: league.passedTeams || []
+        passedTeams: league.passedTeams || [],
+        biddingOrder: league.biddingOrder || [],
+        activeTurn: league.activeTurn || null
     });
 }
 
@@ -456,8 +490,12 @@ function pickNextPlayer(league, io, leagueCode) {
     league.bidHistory = []; // Reset history for new player
     league.passedTeams = []; // Reset passed teams for new player
 
+    // Round Robin: Rotate starting team
+    league.roundRobinStartIndex = (league.roundRobinStartIndex + 1) % league.biddingOrder.length;
+    league.activeTurn = league.biddingOrder[league.roundRobinStartIndex];
+
     // Log Activity
-    league.activityLog.unshift({ type: 'NEW', text: `${nextP.name} is available for current bid` });
+    league.activityLog.unshift({ type: 'NEW', text: `${nextP.name} is available. TURN: ${league.activeTurn}` });
     console.log(`[NEW] Player: ${nextP.name} (${nextP.category}, Base: ${nextP.basePrice})`);
 
     io.to(leagueCode).emit('NEW_PLAYER', {
@@ -488,6 +526,40 @@ function generateMockPlayers() {
         { id: 9, name: "Trent Boult", category: "Bowler", basePrice: 150, status: 'WAITING' },
         { id: 10, name: "Glenn Maxwell", category: "All-Rounder", basePrice: 150, status: 'WAITING' },
     ];
+}
+
+function findNextTurn(league) {
+    if (!league.biddingOrder || league.biddingOrder.length === 0) return;
+
+    const currentIndex = league.biddingOrder.indexOf(league.activeTurn);
+    const orderLength = league.biddingOrder.length;
+
+    // Check next teams in order
+    for (let i = 1; i <= orderLength; i++) {
+        const nextIndex = (currentIndex + i) % orderLength;
+        const nextTeamName = league.biddingOrder[nextIndex];
+        const team = league.teams.find(t => t.name === nextTeamName);
+
+        if (!team) continue;
+
+        // Skip conditions:
+        // 1. Already passed on this player
+        if (league.passedTeams.includes(nextTeamName)) continue;
+
+        // 2. Out of budget (less than base price or current bid + 1)
+        const minNeed = league.currentBid.amount > 0 ? league.currentBid.amount + 1 : league.config.basePrice;
+        if (team.budget < minNeed) continue;
+
+        // 3. Squad full
+        if (team.squad.length >= league.config.playersPerTeam) continue;
+
+        // Valid turn found
+        league.activeTurn = nextTeamName;
+        return;
+    }
+
+    // No one left to bid?
+    league.activeTurn = null;
 }
 
 function saveSnapshot(league, suffix = '') {

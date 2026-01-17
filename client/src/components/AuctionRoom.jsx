@@ -13,7 +13,7 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
 
     if (!leagueState) return <div className="container">Loading Auction Room...</div>;
 
-    const { currentPlayer, currentBid, teams, state, players, config } = leagueState;
+    const { currentPlayer, currentBid, teams, state, players, config, biddingOrder, activeTurn } = leagueState;
     const isLive = state === 'LIVE';
 
     // Find my team if captain
@@ -27,8 +27,34 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
     return (
         <div className="container" style={{ display: 'flex', flexDirection: 'column', padding: '1rem', gap: '1rem', boxSizing: 'border-box' }}>
 
-            {/* TOP ROW: HEADER + STAGE + SIDEBAR */}
-            {/* flex-1 to take up available space, minHeight 0 to allow internal scrolling */}
+            {/* ROUND ROBIN ORDER BAR */}
+            {isLive && biddingOrder && biddingOrder.length > 0 && (
+                <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '1rem', overflowX: 'auto', padding: '0.8rem', background: '#0f172a' }}>
+                    <span style={{ fontWeight: 'bold', color: 'var(--primary)', whiteSpace: 'nowrap' }}>BIDDING ORDER:</span>
+                    {biddingOrder.map((teamName, i) => (
+                        <div
+                            key={teamName}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                padding: '0.4rem 0.8rem',
+                                borderRadius: '4px',
+                                background: activeTurn === teamName ? 'rgba(255, 215, 0, 0.2)' : 'rgba(255,255,255,0.05)',
+                                border: `1px solid ${activeTurn === teamName ? 'var(--primary)' : 'transparent'}`,
+                                boxSizing: 'border-box',
+                                transition: 'all 0.3s ease'
+                            }}
+                        >
+                            <span style={{ color: activeTurn === teamName ? 'var(--primary)' : '#888', fontWeight: activeTurn === teamName ? 'bold' : 'normal' }}>
+                                {i + 1}. {teamName}
+                            </span>
+                            {activeTurn === teamName && <span style={{ fontSize: '0.8rem' }}>🟢</span>}
+                        </div>
+                    ))}
+                </div>
+            )}
+
             {/* TOP ROW: HEADER + STAGE + SIDEBAR */}
             {/* flex-1 to take up available space, minHeight 0 to allow internal scrolling */}
             <div className="responsive-layout">
@@ -71,12 +97,33 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
                         {!isLive && state !== 'ENDED' && (
                             <div style={{ textAlign: 'center' }}>
                                 <h1 style={{ fontSize: '3rem', marginBottom: '1rem' }}>WAITING AREA</h1>
-                                <p className="text-muted">Waiting for Admin to start the auction...</p>
-                                <div style={{ marginTop: '1rem', color: '#666' }}>
-                                    Teams Joined: {teams.length} / {leagueState.config?.teamCount}
+                                <p className="text-muted">
+                                    {teams.length < (leagueState.config?.teamCount || 0)
+                                        ? "Waiting for more teams to join..."
+                                        : "All teams joined! Admin can start the auction."}
+                                </p>
+                                <div style={{ marginTop: '1rem', color: '#666', fontSize: '1.2rem' }}>
+                                    Teams Joined: <strong style={{ color: teams.length === leagueState.config?.teamCount ? 'var(--primary)' : '#fff' }}>
+                                        {teams.length} / {leagueState.config?.teamCount}
+                                    </strong>
                                 </div>
                                 {role === 'ADMIN' && (
-                                    <button className="btn btn-primary" style={{ marginTop: '2rem' }} onClick={() => socket.emit('START_AUCTION', { leagueCode })}>START AUCTION</button>
+                                    <div style={{ marginTop: '2rem' }}>
+                                        <button
+                                            className="btn btn-primary"
+                                            onClick={() => socket.emit('START_AUCTION', { leagueCode })}
+                                            disabled={teams.length < leagueState.config?.teamCount}
+                                        >
+                                            {teams.length < leagueState.config?.teamCount
+                                                ? `WAITING FOR ${leagueState.config.teamCount - teams.length} MORE...`
+                                                : "START AUCTION"}
+                                        </button>
+                                        {teams.length < leagueState.config?.teamCount && (
+                                            <div style={{ marginTop: '1rem', color: '#ff7777', fontSize: '0.9rem' }}>
+                                                (Auction can only start when all {leagueState.config?.teamCount} teams have joined)
+                                            </div>
+                                        )}
+                                    </div>
                                 )}
                             </div>
                         )}
@@ -88,6 +135,10 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
                                 <div style={{ fontSize: '1.8rem', color: '#fff' }}>Base Price: {currentPlayer.basePrice} Th</div>
 
                                 <hr style={{ borderColor: '#333', margin: '1.5rem 0' }} />
+
+                                <div style={{ marginBottom: '0.5rem', fontWeight: 'bold', color: 'var(--primary)' }}>
+                                    {activeTurn ? `TURN: ${activeTurn}` : "BIDDING ROUND OVER"}
+                                </div>
 
                                 <div style={{ marginBottom: '0.5rem' }}>CURRENT BID</div>
                                 <div style={{ fontSize: '4rem', color: 'var(--primary)', fontWeight: 'bold' }}>
@@ -115,7 +166,8 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
                                 myTeam={myTeam}
                                 basePrice={leagueState.config.basePrice}
                                 maxBid={leagueState.config?.maxBid}
-                                hasPassed={leagueState.passedTeams?.includes(socket.id)}
+                                hasPassed={leagueState.passedTeams?.includes(myTeam.name)}
+                                activeTurn={activeTurn}
                             />
                         )}
                     </div>
@@ -126,9 +178,18 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
                     <h3 style={{ marginBottom: '1rem', textTransform: 'uppercase', borderBottom: '1px solid #444', paddingBottom: '0.5rem' }}>Standings</h3>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1 }}>
                         {teams && teams.map(t => (
-                            <div key={t.id} style={{ padding: '0.8rem', background: '#222', borderRadius: '4px', borderLeft: `4px solid ${t.id === (currentBid?.holder) ? 'var(--primary)' : 'transparent'}` }}>
+                            <div key={t.id} style={{
+                                padding: '0.8rem',
+                                background: activeTurn === t.name ? 'rgba(255, 215, 0, 0.1)' : '#222',
+                                borderRadius: '4px',
+                                borderLeft: `4px solid ${activeTurn === t.name ? 'var(--primary)' : 'transparent'}`,
+                                borderRight: `4px solid ${t.id === (currentBid?.holder) ? 'var(--secondary)' : 'transparent'}`
+                            }}>
                                 <div style={{ fontWeight: 'bold', fontSize: '1rem', display: 'flex', justifyContent: 'space-between' }}>
-                                    <span>{t.name}</span>
+                                    <span>
+                                        {t.name}
+                                        {activeTurn === t.name && <span style={{ marginLeft: '0.5rem', fontSize: '0.8rem' }}>👉</span>}
+                                    </span>
                                     <span style={{ color: 'var(--primary)' }}>{t.budget} Th</span>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.3rem', fontSize: '0.8rem' }}>
