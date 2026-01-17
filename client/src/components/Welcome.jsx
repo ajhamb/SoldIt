@@ -11,12 +11,12 @@ export default function Welcome({ onJoin }) {
 
     // League Config (for CREATE mode)
     const [config, setConfig] = useState({
-        leagueName: "Premier League",
-        teamCount: 8,
-        playersPerTeam: 15,
-        budget: 10000,
-        basePrice: 20,
-        maxBid: 5000,
+        leagueName: "HOPL-Win-26",
+        teamCount: 5,
+        playersPerTeam: 9,
+        budget: 1000,
+        basePrice: 50,
+        maxBid: 200,
         players: []
     });
 

@@ -105,10 +105,18 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
                     {/* CONTROLS */}
                     <div style={{ marginTop: '1rem' }}>
                         {role === 'ADMIN' && isLive && (
-                            <AdminControls socket={socket} leagueCode={leagueCode} />
+                            <AdminControls socket={socket} leagueCode={leagueCode} maxBid={leagueState.config?.maxBid} />
                         )}
                         {role === 'CAPTAIN' && isLive && myTeam && (
-                            <CaptainControls socket={socket} leagueCode={leagueCode} currentBid={currentBid} myTeam={myTeam} basePrice={leagueState.config.basePrice} />
+                            <CaptainControls
+                                socket={socket}
+                                leagueCode={leagueCode}
+                                currentBid={currentBid}
+                                myTeam={myTeam}
+                                basePrice={leagueState.config.basePrice}
+                                maxBid={leagueState.config?.maxBid}
+                                hasPassed={leagueState.passedTeams?.includes(socket.id)}
+                            />
                         )}
                     </div>
                 </div>

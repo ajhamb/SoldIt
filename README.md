@@ -50,7 +50,7 @@ Enjoy your customized auction! 🏏
 
 
 ## Misc CloudFlare hosting
-- Start Tunnel cloudflared tunnel --url http://localhost:3000
-- Define in vite 
+- Start Tunnel cloudflared tunnel --url http://localhost:5173 
+- Backend port
 
 

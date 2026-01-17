@@ -14,7 +14,7 @@ module.exports = (io, socket, data) => {
             if (!league) {
                 // Validate settings or use defaults
                 const config = settings || {};
-                const basePrice = parseInt(config.basePrice) || 20;
+                const basePrice = parseInt(config.basePrice) || 50;
 
                 // Process players from CSV/Input or use Mock
                 let initialPlayers = [];
@@ -36,9 +36,9 @@ module.exports = (io, socket, data) => {
                     name: config.leagueName || "Premier League",
                     adminId: socket.id,
                     config: {
-                        teamCount: parseInt(config.teamCount) || 8,
-                        playersPerTeam: parseInt(config.playersPerTeam) || 15,
-                        budget: parseInt(config.budget) || 10000,
+                        teamCount: parseInt(config.teamCount) || 5,
+                        playersPerTeam: parseInt(config.playersPerTeam) || 9,
+                        budget: parseInt(config.budget) || 1000,
                         basePrice: basePrice,
                         playersPerTeam: parseInt(config.playersPerTeam) || 15,
                         budget: parseInt(config.budget) || 10000,
@@ -53,10 +53,12 @@ module.exports = (io, socket, data) => {
                     currentPlayer: null,
                     currentBid: { amount: 0, holder: null, holderName: null },
                     bidHistory: [], // Track bids for undo
+                    passedTeams: [], // Teams that passed on CURRENT player
                     state: 'WAITING', // WAITING, LIVE, PAUSED, ENDED
                     activityLog: [] // [{ type: 'BID', text: '...' }]
                 };
                 data.leagues.set(leagueCode, league);
+                console.log(`[CREATE] League ${league.name} (${leagueCode}) created. Admin PIN: ${league.adminPin}`);
             } else {
                 // Rejoin as admin
                 // Verify PIN
@@ -192,6 +194,27 @@ module.exports = (io, socket, data) => {
         broadcastUpdate(io, leagueCode, league);
     });
 
+    // --- RESTART BIDDING ---
+    socket.on('RESTART_BIDDING', ({ leagueCode }) => {
+        const league = data.leagues.get(leagueCode);
+        if (!league || league.state !== 'LIVE') return;
+        if (socket.id !== league.adminId) return;
+
+        // Reset current bid and history
+        league.currentBid = { amount: 0, holder: null, holderName: null };
+        league.bidHistory = [];
+        league.passedTeams = []; // Allow everyone to bid again
+
+        // Log Activity
+        league.activityLog.unshift({ type: 'UNDO', text: `🔄 Bidding RESTARTED by Admin` });
+
+        console.log(`[RESTART] Bidding restarted for ${league.currentPlayer?.name} in league ${leagueCode}`);
+        saveSnapshot(league);
+
+        io.to(leagueCode).emit('BID_UPDATE', league.currentBid);
+        broadcastUpdate(io, leagueCode, league);
+    });
+
     // --- MANUAL ASSIGN (ADMIN REASSIGNMENT) ---
     socket.on('ADMIN_ASSIGN_PLAYER', ({ leagueCode, playerId, teamName, price }) => {
         const league = data.leagues.get(leagueCode);
@@ -307,6 +330,13 @@ module.exports = (io, socket, data) => {
         if (!team) return;
 
         league.activityLog.unshift({ type: 'PASS', text: `${team.name} passed` });
+
+        // Add to passed teams
+        if (!league.passedTeams) league.passedTeams = [];
+        if (!league.passedTeams.includes(socket.id)) {
+            league.passedTeams.push(socket.id);
+        }
+
         console.log(`[PASS] ${team.name} passed on ${league.currentPlayer.name}`);
         saveSnapshot(league);
         broadcastUpdate(io, leagueCode, league);
@@ -406,7 +436,8 @@ function broadcastUpdate(io, leagueCode, league) {
         currentBid: league.currentBid,
         currentPlayer: league.currentPlayer,
         players: league.players, // Send full list for Admin view
-        activityLog: league.activityLog || []
+        activityLog: league.activityLog || [],
+        passedTeams: league.passedTeams || []
     });
 }
 
@@ -423,6 +454,7 @@ function pickNextPlayer(league, io, leagueCode) {
     league.currentPlayer = nextP;
     league.currentBid = { amount: 0, holder: null, holderName: null };
     league.bidHistory = []; // Reset history for new player
+    league.passedTeams = []; // Reset passed teams for new player
 
     // Log Activity
     league.activityLog.unshift({ type: 'NEW', text: `${nextP.name} is available for current bid` });
