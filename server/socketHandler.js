@@ -390,7 +390,8 @@ module.exports = (io, socket, data) => {
     });
 
     socket.on('disconnect', () => {
-        console.log('User disconnected:', socket.id);
+        const ip = socket.handshake.address;
+        console.log(`User disconnected: ${socket.id} (IP: ${ip})`);
     });
 };
 
