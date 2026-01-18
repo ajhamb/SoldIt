@@ -58,7 +58,7 @@ module.exports = (io, socket, data) => {
                     activityLog: [] // [{ type: 'BID', text: '...' }]
                 };
                 data.leagues.set(leagueCode, league);
-                console.log(`[CREATE] League ${league.name} (${leagueCode}) created. Admin PIN: ${league.adminPin}`);
+                console.log(`[${leagueCode}][CREATE] League ${league.name} created. Admin PIN: ${league.adminPin}`);
             } else {
                 // Rejoin as admin
                 // Verify PIN
@@ -106,7 +106,7 @@ module.exports = (io, socket, data) => {
         }
 
         // Notify everyone
-        console.log(`[JOIN] ${name} joined league ${leagueCode} as ${role}`);
+        console.log(`[${leagueCode}][JOIN] ${name} joined as ${role}`);
         saveSnapshot(league);
         broadcastUpdate(io, leagueCode, league);
     });
@@ -129,7 +129,7 @@ module.exports = (io, socket, data) => {
         // Initialize Round Robin Order
         league.biddingOrder = league.teams.map(t => t.name);
         shuffleArray(league.biddingOrder);
-        console.log(`[ORDER] Bidding order for ${leagueCode}: ${league.biddingOrder.join(' -> ')}`);
+        console.log(`[${leagueCode}][ORDER] Bidding order: ${league.biddingOrder.join(' -> ')}`);
 
         pickNextPlayer(league, io, leagueCode);
     });
@@ -184,7 +184,7 @@ module.exports = (io, socket, data) => {
         if (league.activityLog.length > 50) league.activityLog.pop();
 
 
-        console.log(`[BID] ${team.name} bid ${amount} on ${league.currentPlayer.name}`);
+        console.log(`[${leagueCode}][BID] ${team.name} bid ${amount} on ${league.currentPlayer.name}`);
         saveSnapshot(league);
 
         // Advance Turn
@@ -207,7 +207,7 @@ module.exports = (io, socket, data) => {
         // Log Activity
         league.activityLog.unshift({ type: 'UNDO', text: `⚠️ Previous Bid UNDONE by Admin` });
 
-        console.log(`[UNDO] Bid reverted to ${previousBid.amount} by ${previousBid.holderName || 'None'}`);
+        console.log(`[${leagueCode}][UNDO] Bid reverted to ${previousBid.amount} by ${previousBid.holderName || 'None'}`);
         saveSnapshot(league);
 
         io.to(leagueCode).emit('BID_UPDATE', league.currentBid);
@@ -233,7 +233,7 @@ module.exports = (io, socket, data) => {
         // Log Activity
         league.activityLog.unshift({ type: 'UNDO', text: `🔄 Bidding RESTARTED by Admin` });
 
-        console.log(`[RESTART] Bidding restarted for ${league.currentPlayer?.name} in league ${leagueCode}`);
+        console.log(`[${leagueCode}][RESTART] Bidding restarted for ${league.currentPlayer?.name}`);
         saveSnapshot(league);
 
         io.to(leagueCode).emit('BID_UPDATE', league.currentBid);
@@ -309,7 +309,7 @@ module.exports = (io, socket, data) => {
         // Log Activity
         league.activityLog.unshift({ type: 'SOLD', text: `ADMIN: Assigned ${player.name} to ${targetTeam.name} for ${assignPrice}` });
 
-        console.log(`[ADMIN ASSIGN] ${player.name} -> ${targetTeam.name} (${assignPrice})`);
+        console.log(`[${leagueCode}][ADMIN ASSIGN] ${player.name} -> ${targetTeam.name} (${assignPrice})`);
         saveSnapshot(league);
         broadcastUpdate(io, leagueCode, league);
     });
@@ -329,7 +329,7 @@ module.exports = (io, socket, data) => {
             if (team) {
                 team.squad = team.squad.filter(p => p.id !== player.id);
                 team.budget += player.soldAt;
-                console.log(`[UNASSIGN] Refunded ${team.name} ${player.soldAt}`);
+                console.log(`[${leagueCode}][UNASSIGN] Refunded ${team.name} ${player.soldAt}`);
             }
         }
 
@@ -340,7 +340,7 @@ module.exports = (io, socket, data) => {
 
         // Log
         league.activityLog.unshift({ type: 'SKIP', text: `ADMIN: Unassigned/Released ${player.name}` });
-        console.log(`[UNASSIGN] Admin released ${player.name}`);
+        console.log(`[${leagueCode}][UNASSIGN] Admin released ${player.name}`);
 
         saveSnapshot(league);
         broadcastUpdate(io, leagueCode, league);
@@ -365,7 +365,7 @@ module.exports = (io, socket, data) => {
             league.passedTeams.push(team.name);
         }
 
-        console.log(`[PASS] ${team.name} passed on ${league.currentPlayer.name}`);
+        console.log(`[${leagueCode}][PASS] ${team.name} passed on ${league.currentPlayer.name}`);
         saveSnapshot(league);
 
         // Advance Turn
@@ -393,7 +393,7 @@ module.exports = (io, socket, data) => {
         // Log Activity
         league.activityLog.unshift({ type: 'SOLD', text: `${player.name} SOLD to ${team.name} for ${league.currentBid.amount} Th` });
 
-        console.log(`[SOLD] ${player.name} -> ${team.name} (${league.currentBid.amount})`);
+        console.log(`[${leagueCode}][SOLD] ${player.name} -> ${team.name} (${league.currentBid.amount})`);
         saveSnapshot(league);
 
         // Remove from unpicked (it was already popped, but just ensuring status is updated in main list too)
@@ -426,7 +426,7 @@ module.exports = (io, socket, data) => {
 
         league.activityLog.unshift({ type: 'SKIP', text: `${player.name} was UNSOLD (Skipped)` });
 
-        console.log(`[SKIP] ${player.name} marked UNSOLD`);
+        console.log(`[${leagueCode}][SKIP] ${player.name} marked UNSOLD`);
         saveSnapshot(league);
 
         const mainListPlayer = league.players.find(p => p.id === player.id);
@@ -444,7 +444,7 @@ module.exports = (io, socket, data) => {
         if (!league) return;
 
         league.state = 'ENDED';
-        console.log(`[END] Auction Ended for ${leagueCode}`);
+        console.log(`[${leagueCode}][END] Auction Ended`);
         saveSnapshot(league, 'FINAL_SESSION');
 
         io.to(leagueCode).emit('AUCTION_ENDED');
@@ -496,7 +496,7 @@ function pickNextPlayer(league, io, leagueCode) {
 
     // Log Activity
     league.activityLog.unshift({ type: 'NEW', text: `${nextP.name} is available. TURN: ${league.activeTurn}` });
-    console.log(`[NEW] Player: ${nextP.name} (${nextP.category}, Base: ${nextP.basePrice})`);
+    console.log(`[${league.code}][NEW] Player: ${nextP.name} (${nextP.category}, Base: ${nextP.basePrice})`);
 
     io.to(leagueCode).emit('NEW_PLAYER', {
         player: nextP,
@@ -577,9 +577,9 @@ function saveSnapshot(league, suffix = '') {
 
         const data = JSON.stringify(league, null, 2);
         fs.writeFile(filepath, data, (err) => {
-            if (err) console.error("Error saving snapshot:", err);
+            if (err) console.error(`[${league.code}] Error saving snapshot:`, err);
         });
     } catch (e) {
-        console.error("Snapshot failed:", e);
+        console.error(`[${league.code}] Snapshot failed:`, e);
     }
 }

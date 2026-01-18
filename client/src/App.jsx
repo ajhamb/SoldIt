@@ -14,38 +14,29 @@ function App() {
   const [isConnected, setIsConnected] = useState(socket.connected);
 
   useEffect(() => {
+    // --- PERSISTENCE: Check for existing session ---
+    const savedSession = localStorage.getItem('auction_session');
+    if (savedSession) {
+      try {
+        const { name: sName, leagueCode: sCode, role: sRole } = JSON.parse(savedSession);
+        if (sName && sCode && sRole) {
+          handleJoin(sName, sCode, sRole);
+        }
+      } catch (e) {
+        localStorage.removeItem('auction_session');
+      }
+    }
+
     socket.on('connect', () => setIsConnected(true));
     socket.on('disconnect', () => setIsConnected(false));
-
-    socket.on('LEAGUE_UPDATE', (updatedLeague) => {
-      // Merge updates (careful not to overwrite if updatedLeague is partial, but server sends full state usually)
-      // Actually server sends partial { teams, state, currentBid } sometimes?
-      // Let's assume server sends what it sends.
-      setLeagueState(prev => ({ ...prev, ...updatedLeague }));
+    // ... (existing socket handlers)
+    socket.on('ERROR', (err) => {
+      alert(err.message);
+      if (err.message.includes('not found') || err.message.includes('Full')) {
+        localStorage.removeItem('auction_session');
+        setRole(null);
+      }
     });
-
-    socket.on('NEW_PLAYER', (data) => {
-      setLeagueState(prev => ({
-        ...prev,
-        currentPlayer: data.player,
-        currentBid: data.currentBid
-      }));
-    });
-
-    socket.on('BID_UPDATE', (newBid) => {
-      setLeagueState(prev => ({ ...prev, currentBid: newBid }));
-    });
-
-    socket.on('PLAYER_SOLD', (data) => {
-      // Show notification? 
-      console.log("SOLD:", data);
-    });
-
-    socket.on('ADMIN_RESTORE', (fullLeague) => {
-      setLeagueState(fullLeague);
-    });
-
-    socket.on('ERROR', (err) => alert(err.message));
 
     return () => {
       socket.off('connect');
@@ -53,6 +44,7 @@ function App() {
       socket.off('LEAGUE_UPDATE');
       socket.off('NEW_PLAYER');
       socket.off('BID_UPDATE');
+      socket.off('ERROR');
     };
   }, []);
 
@@ -60,6 +52,13 @@ function App() {
     setName(enteredName);
     setLeagueCode(enteredCode);
     setRole(chosenRole);
+
+    // Persist session
+    localStorage.setItem('auction_session', JSON.stringify({
+      name: enteredName,
+      leagueCode: enteredCode,
+      role: chosenRole
+    }));
 
     socket.emit('JOIN_LEAGUE', {
       leagueCode: enteredCode,
@@ -69,12 +68,21 @@ function App() {
     });
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('auction_session');
+    setRole(null);
+    window.location.reload(); // Hard reset to clear socket state
+  };
+
   if (!role) {
     return <Welcome onJoin={handleJoin} />;
   }
 
   return (
     <div className="app-container">
+      <div style={{ position: 'fixed', top: 10, right: 10, zIndex: 1000 }}>
+        <button onClick={handleLogout} className="btn-secondary" style={{ padding: '0.3rem 0.6rem', fontSize: '0.7rem' }}>EXIT LEAGUE</button>
+      </div>
       <AuctionRoom
         socket={socket}
         role={role}

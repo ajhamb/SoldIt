@@ -4,9 +4,9 @@ export default function CaptainControls({ socket, leagueCode, currentBid, myTeam
     // Determine if it's my turn
     const isMyTurn = myTeam.name === activeTurn;
 
-    // Determine min bid: If 0 (nobid), min is basePrice. Else current + 20.
+    // Determine min bid: If 0 (nobid), min is basePrice. Else current + 5.
     const effectiveCurrent = currentBid.amount || 0;
-    const nextMinBid = effectiveCurrent === 0 ? basePrice : effectiveCurrent + 20;
+    const nextMinBid = effectiveCurrent === 0 ? basePrice : effectiveCurrent + 5;
 
     const [customBid, setCustomBid] = useState(nextMinBid);
 
