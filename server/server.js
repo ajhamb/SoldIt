@@ -58,8 +58,8 @@ const clientDistPath = path.join(__dirname, '../client/dist');
 if (fs.existsSync(clientDistPath)) {
     app.use(express.static(clientDistPath));
     // Catch-all to serve index.html for client-side routing
-    // Express 5 requires '(.*)' or specific regex for wildcards
-    app.get('(.*)', (req, res) => {
+    // Express 5 requires named parameters for wildcards
+    app.get('/:path*', (req, res) => {
         if (!req.path.startsWith('/socket.io')) {
             res.sendFile(path.join(clientDistPath, 'index.html'));
         }
