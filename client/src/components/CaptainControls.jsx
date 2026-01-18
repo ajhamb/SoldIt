@@ -1,8 +1,15 @@
 import { useState, useEffect } from 'react';
 
-export default function CaptainControls({ socket, leagueCode, currentBid, myTeam, basePrice, maxBid, hasPassed, activeTurn }) {
+export default function CaptainControls({ socket, leagueCode, currentBid, myTeam, basePrice, maxBid, playersPerTeam, hasPassed, activeTurn }) {
     // Determine if it's my turn
     const isMyTurn = myTeam.name === activeTurn;
+
+    // --- Max Reachable Bid Logic ---
+    const squadSize = myTeam.squad?.length || 0;
+    const spotsLeft = playersPerTeam - squadSize;
+    // We need to save enough to buy (spotsLeft - 1) players at basePrice
+    const reserveNeeded = Math.max(0, (spotsLeft - 1) * basePrice);
+    const maxReachableBid = myTeam.budget - reserveNeeded;
 
     // Determine min bid: If 0 (nobid), min is basePrice. Else current + 5.
     const effectiveCurrent = currentBid.amount || 0;
@@ -19,6 +26,11 @@ export default function CaptainControls({ socket, leagueCode, currentBid, myTeam
         if (!isMyTurn || hasPassed) return;
         const amount = parseInt(customBid);
         if (isNaN(amount)) return alert("Please enter a valid number");
+
+        // 1. Budget Reserve Validation
+        if (amount > maxReachableBid) {
+            return alert(`Cannot Bid ${amount} Th!\n\nYou must keep at least ${reserveNeeded} Th to fill your remaining ${spotsLeft - 1} squad spots at Base Price (${basePrice} Th).\n\nYour Maximum Reachable Bid for this player is ${maxReachableBid} Th.`);
+        }
 
         if (amount > myTeam.budget) return alert("Insufficient Budget!");
 
@@ -68,11 +80,12 @@ export default function CaptainControls({ socket, leagueCode, currentBid, myTeam
                     </button>
                 </div>
 
-                <div style={{ fontSize: '0.9rem', color: '#888', display: 'flex', gap: '1rem' }}>
-                    <span>{currentBid.amount === 0 ? `Minimum: ${basePrice} Th` : `Next Min: ${currentBid.amount + 1} Th`}</span>
+                <div style={{ fontSize: '0.9rem', color: '#888', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                    <span>{currentBid.amount === 0 ? `Minimum: ${basePrice} Th` : `Next Min: ${effectiveCurrent + 5} Th`}</span>
                     {maxBid && maxBid !== Infinity && (
-                        <span style={{ color: '#ffaa00' }}>Max Bid: {maxBid} Th</span>
+                        <span style={{ color: '#ffaa00' }}>Limit: {maxBid} Th</span>
                     )}
+                    <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>Max Reachable: {maxReachableBid} Th</span>
                 </div>
 
                 <button className="btn"

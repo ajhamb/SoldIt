@@ -1,11 +1,11 @@
 const fs = require('fs');
 const path = require('path');
 
-module.exports = (io, socket, data) => {
+module.exports = (io, socket, data, supabase) => {
 
     // --- CREATE / JOIN LEAGUE ---
     // Now accepts detailed settings for Admin creation
-    socket.on('JOIN_LEAGUE', ({ leagueCode, name, role, settings }) => {
+    socket.on('JOIN_LEAGUE', async ({ leagueCode, name, role, settings }) => {
         socket.join(leagueCode);
 
         let league = data.leagues.get(leagueCode);
@@ -107,12 +107,12 @@ module.exports = (io, socket, data) => {
 
         // Notify everyone
         console.log(`[${leagueCode}][JOIN] ${name} joined as ${role}`);
-        saveSnapshot(league);
+        await saveSnapshot(league);
         broadcastUpdate(io, leagueCode, league);
     });
 
     // --- START AUCTION ---
-    socket.on('START_AUCTION', ({ leagueCode }) => {
+    socket.on('START_AUCTION', async ({ leagueCode }) => {
         const league = data.leagues.get(leagueCode);
         if (!league) return;
 
@@ -135,7 +135,7 @@ module.exports = (io, socket, data) => {
     });
 
     // --- PLACE BID ---
-    socket.on('PLACE_BID', ({ leagueCode, amount }) => {
+    socket.on('PLACE_BID', async ({ leagueCode, amount }) => {
         const league = data.leagues.get(leagueCode);
         if (!league || league.state !== 'LIVE') return;
 
@@ -164,7 +164,9 @@ module.exports = (io, socket, data) => {
             const reserveNeeded = slotsRemainingAfterThis * league.config.basePrice;
             if ((team.budget - amount) < reserveNeeded) {
                 // Not enough money left to fill squad
-                return;
+                return socket.emit('ERROR', {
+                    message: `Cannot Bid ${amount} Th! You must keep at least ${reserveNeeded} Th to fill your remaining ${slotsRemainingAfterThis} squad spots at Base Price (${league.config.basePrice} Th).`
+                });
             }
         }
 
@@ -185,7 +187,7 @@ module.exports = (io, socket, data) => {
 
 
         console.log(`[${leagueCode}][BID] ${team.name} bid ${amount} on ${league.currentPlayer.name}`);
-        saveSnapshot(league);
+        await saveSnapshot(league);
 
         // Advance Turn
         findNextTurn(league);
@@ -195,7 +197,7 @@ module.exports = (io, socket, data) => {
     });
 
     // --- UNDO BID ---
-    socket.on('UNDO_BID', ({ leagueCode }) => {
+    socket.on('UNDO_BID', async ({ leagueCode }) => {
         const league = data.leagues.get(leagueCode);
         if (!league || league.state !== 'LIVE') return;
         if (league.bidHistory.length === 0) return;
@@ -208,14 +210,14 @@ module.exports = (io, socket, data) => {
         league.activityLog.unshift({ type: 'UNDO', text: `⚠️ Previous Bid UNDONE by Admin` });
 
         console.log(`[${leagueCode}][UNDO] Bid reverted to ${previousBid.amount} by ${previousBid.holderName || 'None'}`);
-        saveSnapshot(league);
+        await saveSnapshot(league);
 
         io.to(leagueCode).emit('BID_UPDATE', league.currentBid);
         broadcastUpdate(io, leagueCode, league);
     });
 
     // --- RESTART BIDDING ---
-    socket.on('RESTART_BIDDING', ({ leagueCode }) => {
+    socket.on('RESTART_BIDDING', async ({ leagueCode }) => {
         const league = data.leagues.get(leagueCode);
         if (!league || league.state !== 'LIVE') return;
         if (socket.id !== league.adminId) return;
@@ -234,14 +236,14 @@ module.exports = (io, socket, data) => {
         league.activityLog.unshift({ type: 'UNDO', text: `🔄 Bidding RESTARTED by Admin` });
 
         console.log(`[${leagueCode}][RESTART] Bidding restarted for ${league.currentPlayer?.name}`);
-        saveSnapshot(league);
+        await saveSnapshot(league);
 
         io.to(leagueCode).emit('BID_UPDATE', league.currentBid);
         broadcastUpdate(io, leagueCode, league);
     });
 
     // --- MANUAL ASSIGN (ADMIN REASSIGNMENT) ---
-    socket.on('ADMIN_ASSIGN_PLAYER', ({ leagueCode, playerId, teamName, price }) => {
+    socket.on('ADMIN_ASSIGN_PLAYER', async ({ leagueCode, playerId, teamName, price }) => {
         const league = data.leagues.get(leagueCode);
         if (!league) return;
         if (socket.id !== league.adminId) return;
@@ -310,12 +312,12 @@ module.exports = (io, socket, data) => {
         league.activityLog.unshift({ type: 'SOLD', text: `ADMIN: Assigned ${player.name} to ${targetTeam.name} for ${assignPrice}` });
 
         console.log(`[${leagueCode}][ADMIN ASSIGN] ${player.name} -> ${targetTeam.name} (${assignPrice})`);
-        saveSnapshot(league);
+        await saveSnapshot(league);
         broadcastUpdate(io, leagueCode, league);
     });
 
     // --- MANUAL UNASSIGN (ADMIN RELEASE) ---
-    socket.on('ADMIN_UNASSIGN_PLAYER', ({ leagueCode, playerId }) => {
+    socket.on('ADMIN_UNASSIGN_PLAYER', async ({ leagueCode, playerId }) => {
         const league = data.leagues.get(leagueCode);
         if (!league) return;
         if (socket.id !== league.adminId) return;
@@ -342,12 +344,12 @@ module.exports = (io, socket, data) => {
         league.activityLog.unshift({ type: 'SKIP', text: `ADMIN: Unassigned/Released ${player.name}` });
         console.log(`[${leagueCode}][UNASSIGN] Admin released ${player.name}`);
 
-        saveSnapshot(league);
+        await saveSnapshot(league);
         broadcastUpdate(io, leagueCode, league);
     });
 
     // --- CAPTAIN PASS ---
-    socket.on('CAPTAIN_PASS', ({ leagueCode }) => {
+    socket.on('CAPTAIN_PASS', async ({ leagueCode }) => {
         const league = data.leagues.get(leagueCode);
         if (!league || !league.currentPlayer) return;
 
@@ -366,7 +368,7 @@ module.exports = (io, socket, data) => {
         }
 
         console.log(`[${leagueCode}][PASS] ${team.name} passed on ${league.currentPlayer.name}`);
-        saveSnapshot(league);
+        await saveSnapshot(league);
 
         // Advance Turn
         findNextTurn(league);
@@ -375,7 +377,7 @@ module.exports = (io, socket, data) => {
     });
 
     // --- SOLD ---
-    socket.on('SOLD', ({ leagueCode }) => {
+    socket.on('SOLD', async ({ leagueCode }) => {
         const league = data.leagues.get(leagueCode);
         if (!league || !league.currentBid.holder) return;
 
@@ -394,7 +396,7 @@ module.exports = (io, socket, data) => {
         league.activityLog.unshift({ type: 'SOLD', text: `${player.name} SOLD to ${team.name} for ${league.currentBid.amount} Th` });
 
         console.log(`[${leagueCode}][SOLD] ${player.name} -> ${team.name} (${league.currentBid.amount})`);
-        saveSnapshot(league);
+        await saveSnapshot(league);
 
         // Remove from unpicked (it was already popped, but just ensuring status is updated in main list too)
         const mainListPlayer = league.players.find(p => p.id === player.id);
@@ -417,7 +419,7 @@ module.exports = (io, socket, data) => {
     });
 
     // --- UNSOLD / PASS ---
-    socket.on('SKIP_PLAYER', ({ leagueCode }) => {
+    socket.on('SKIP_PLAYER', async ({ leagueCode }) => {
         const league = data.leagues.get(leagueCode);
         if (!league || !league.currentPlayer) return;
 
@@ -427,7 +429,7 @@ module.exports = (io, socket, data) => {
         league.activityLog.unshift({ type: 'SKIP', text: `${player.name} was UNSOLD (Skipped)` });
 
         console.log(`[${leagueCode}][SKIP] ${player.name} marked UNSOLD`);
-        saveSnapshot(league);
+        await saveSnapshot(league);
 
         const mainListPlayer = league.players.find(p => p.id === player.id);
         if (mainListPlayer) mainListPlayer.status = 'UNSOLD';
@@ -439,13 +441,13 @@ module.exports = (io, socket, data) => {
     });
 
     // --- END SESSION ---
-    socket.on('END_SESSION', ({ leagueCode }) => {
+    socket.on('END_SESSION', async ({ leagueCode }) => {
         const league = data.leagues.get(leagueCode);
         if (!league) return;
 
         league.state = 'ENDED';
         console.log(`[${leagueCode}][END] Auction Ended`);
-        saveSnapshot(league, 'FINAL_SESSION');
+        await saveSnapshot(league, 'FINAL_SESSION');
 
         io.to(leagueCode).emit('AUCTION_ENDED');
         broadcastUpdate(io, leagueCode, league);
@@ -455,131 +457,140 @@ module.exports = (io, socket, data) => {
         const ip = socket.handshake.address;
         console.log(`User disconnected: ${socket.id} (IP: ${ip})`);
     });
-};
 
-// Utils
-function broadcastUpdate(io, leagueCode, league) {
-    io.to(leagueCode).emit('LEAGUE_UPDATE', {
-        code: league.code,
-        name: league.name,
-        config: league.config,
-        teams: league.teams,
-        state: league.state,
-        currentBid: league.currentBid,
-        currentPlayer: league.currentPlayer,
-        players: league.players, // Send full list for Admin view
-        activityLog: league.activityLog || [],
-        passedTeams: league.passedTeams || [],
-        biddingOrder: league.biddingOrder || [],
-        activeTurn: league.activeTurn || null
-    });
-}
-
-function pickNextPlayer(league, io, leagueCode) {
-    if (league.unpickedPlayers.length === 0) {
-        league.state = 'ENDED';
-        league.currentPlayer = null;
-        io.to(leagueCode).emit('AUCTION_ENDED');
-        broadcastUpdate(io, leagueCode, league);
-        return;
+    // Utils
+    function broadcastUpdate(io, leagueCode, league) {
+        io.to(leagueCode).emit('LEAGUE_UPDATE', {
+            code: league.code,
+            name: league.name,
+            config: league.config,
+            teams: league.teams,
+            state: league.state,
+            currentBid: league.currentBid,
+            currentPlayer: league.currentPlayer,
+            players: league.players, // Send full list for Admin view
+            activityLog: league.activityLog || [],
+            passedTeams: league.passedTeams || [],
+            biddingOrder: league.biddingOrder || [],
+            activeTurn: league.activeTurn || null
+        });
     }
 
-    const nextP = league.unpickedPlayers.pop();
-    league.currentPlayer = nextP;
-    league.currentBid = { amount: 0, holder: null, holderName: null };
-    league.bidHistory = []; // Reset history for new player
-    league.passedTeams = []; // Reset passed teams for new player
-
-    // Round Robin: Rotate starting team
-    league.roundRobinStartIndex = (league.roundRobinStartIndex + 1) % league.biddingOrder.length;
-    league.activeTurn = league.biddingOrder[league.roundRobinStartIndex];
-
-    // Log Activity
-    league.activityLog.unshift({ type: 'NEW', text: `${nextP.name} is available. TURN: ${league.activeTurn}` });
-    console.log(`[${league.code}][NEW] Player: ${nextP.name} (${nextP.category}, Base: ${nextP.basePrice})`);
-
-    io.to(leagueCode).emit('NEW_PLAYER', {
-        player: nextP,
-        currentBid: league.currentBid
-    });
-
-    broadcastUpdate(io, leagueCode, league);
-}
-
-function shuffleArray(array) {
-    for (let i = array.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [array[i], array[j]] = [array[j], array[i]];
-    }
-}
-
-function generateMockPlayers() {
-    return [
-        { id: 1, name: "Virat Kohli", category: "Batter", basePrice: 200, status: 'WAITING' },
-        { id: 2, name: "Jasprit Bumrah", category: "Bowler", basePrice: 200, status: 'WAITING' },
-        { id: 3, name: "Ben Stokes", category: "All-Rounder", basePrice: 200, status: 'WAITING' },
-        { id: 4, name: "MS Dhoni", category: "WK", basePrice: 150, status: 'WAITING' },
-        { id: 5, name: "Rashid Khan", category: "Bowler", basePrice: 150, status: 'WAITING' },
-        { id: 6, name: "Hardik Pandya", category: "All-Rounder", basePrice: 150, status: 'WAITING' },
-        { id: 7, name: "Rohit Sharma", category: "Batter", basePrice: 200, status: 'WAITING' },
-        { id: 8, name: "Suryakumar Yadav", category: "Batter", basePrice: 150, status: 'WAITING' },
-        { id: 9, name: "Trent Boult", category: "Bowler", basePrice: 150, status: 'WAITING' },
-        { id: 10, name: "Glenn Maxwell", category: "All-Rounder", basePrice: 150, status: 'WAITING' },
-    ];
-}
-
-function findNextTurn(league) {
-    if (!league.biddingOrder || league.biddingOrder.length === 0) return;
-
-    const currentIndex = league.biddingOrder.indexOf(league.activeTurn);
-    const orderLength = league.biddingOrder.length;
-
-    // Check next teams in order
-    for (let i = 1; i <= orderLength; i++) {
-        const nextIndex = (currentIndex + i) % orderLength;
-        const nextTeamName = league.biddingOrder[nextIndex];
-        const team = league.teams.find(t => t.name === nextTeamName);
-
-        if (!team) continue;
-
-        // Skip conditions:
-        // 1. Already passed on this player
-        if (league.passedTeams.includes(nextTeamName)) continue;
-
-        // 2. Out of budget (less than base price or current bid + 1)
-        const minNeed = league.currentBid.amount > 0 ? league.currentBid.amount + 1 : league.config.basePrice;
-        if (team.budget < minNeed) continue;
-
-        // 3. Squad full
-        if (team.squad.length >= league.config.playersPerTeam) continue;
-
-        // Valid turn found
-        league.activeTurn = nextTeamName;
-        return;
-    }
-
-    // No one left to bid?
-    league.activeTurn = null;
-}
-
-function saveSnapshot(league, suffix = '') {
-    try {
-        const timestamp = Date.now();
-        const s = suffix ? `-${suffix}` : '';
-        const filename = `${league.code}-${league.name.replace(/[^a-z0-9]/gi, '_')}-${timestamp}${s}.json`;
-        const backupDir = path.join(__dirname, 'backups');
-
-        if (!fs.existsSync(backupDir)) {
-            fs.mkdirSync(backupDir, { recursive: true });
+    function pickNextPlayer(league, io, leagueCode) {
+        if (league.unpickedPlayers.length === 0) {
+            league.state = 'ENDED';
+            league.currentPlayer = null;
+            io.to(leagueCode).emit('AUCTION_ENDED');
+            broadcastUpdate(io, leagueCode, league);
+            return;
         }
 
-        const filepath = path.join(backupDir, filename);
+        const nextP = league.unpickedPlayers.pop();
+        league.currentPlayer = nextP;
+        league.currentBid = { amount: 0, holder: null, holderName: null };
+        league.bidHistory = []; // Reset history for new player
+        league.passedTeams = []; // Reset passed teams for new player
 
-        const data = JSON.stringify(league, null, 2);
-        fs.writeFile(filepath, data, (err) => {
-            if (err) console.error(`[${league.code}] Error saving snapshot:`, err);
+        // Round Robin: Rotate starting team
+        league.roundRobinStartIndex = (league.roundRobinStartIndex + 1) % league.biddingOrder.length;
+        league.activeTurn = league.biddingOrder[league.roundRobinStartIndex];
+
+        // Log Activity
+        league.activityLog.unshift({ type: 'NEW', text: `${nextP.name} is available. TURN: ${league.activeTurn}` });
+        console.log(`[${league.code}][NEW] Player: ${nextP.name} (${nextP.category}, Base: ${nextP.basePrice})`);
+
+        io.to(leagueCode).emit('NEW_PLAYER', {
+            player: nextP,
+            currentBid: league.currentBid
         });
-    } catch (e) {
-        console.error(`[${league.code}] Snapshot failed:`, e);
+
+        broadcastUpdate(io, leagueCode, league);
     }
-}
+
+    function shuffleArray(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+    }
+
+    function generateMockPlayers() {
+        return [
+            { id: 1, name: "Virat Kohli", category: "Batter", basePrice: 200, status: 'WAITING' },
+            { id: 2, name: "Jasprit Bumrah", category: "Bowler", basePrice: 200, status: 'WAITING' },
+            { id: 3, name: "Ben Stokes", category: "All-Rounder", basePrice: 200, status: 'WAITING' },
+            { id: 4, name: "MS Dhoni", category: "WK", basePrice: 150, status: 'WAITING' },
+            { id: 5, name: "Rashid Khan", category: "Bowler", basePrice: 150, status: 'WAITING' },
+            { id: 6, name: "Hardik Pandya", category: "All-Rounder", basePrice: 150, status: 'WAITING' },
+            { id: 7, name: "Rohit Sharma", category: "Batter", basePrice: 200, status: 'WAITING' },
+            { id: 8, name: "Suryakumar Yadav", category: "Batter", basePrice: 150, status: 'WAITING' },
+            { id: 9, name: "Trent Boult", category: "Bowler", basePrice: 150, status: 'WAITING' },
+            { id: 10, name: "Glenn Maxwell", category: "All-Rounder", basePrice: 150, status: 'WAITING' },
+        ];
+    }
+
+    function findNextTurn(league) {
+        if (!league.biddingOrder || league.biddingOrder.length === 0) return;
+
+        const currentIndex = league.biddingOrder.indexOf(league.activeTurn);
+        const orderLength = league.biddingOrder.length;
+
+        // Check next teams in order
+        for (let i = 1; i <= orderLength; i++) {
+            const nextIndex = (currentIndex + i) % orderLength;
+            const nextTeamName = league.biddingOrder[nextIndex];
+            const team = league.teams.find(t => t.name === nextTeamName);
+
+            if (!team) continue;
+
+            // Skip conditions:
+            // 1. Already passed on this player
+            if (league.passedTeams.includes(nextTeamName)) continue;
+
+            // 2. Out of budget (less than base price or current bid + 1)
+            const minNeed = league.currentBid.amount > 0 ? league.currentBid.amount + 1 : league.config.basePrice;
+            if (team.budget < minNeed) continue;
+
+            // 3. Squad full
+            if (team.squad.length >= league.config.playersPerTeam) continue;
+
+            // Valid turn found
+            league.activeTurn = nextTeamName;
+            return;
+        }
+
+        // No one left to bid?
+        league.activeTurn = null;
+    }
+
+    async function saveSnapshot(league, suffix = '') {
+        try {
+            const timestamp = Date.now();
+            const s = suffix ? `-${suffix}` : '';
+            const filename = `${league.code}-${league.name.replace(/[^a-z0-9]/gi, '_')}-${timestamp}${s}.json`;
+            const backupDir = path.join(__dirname, 'backups');
+
+            if (!fs.existsSync(backupDir)) {
+                fs.mkdirSync(backupDir, { recursive: true });
+            }
+
+            const filepath = path.join(backupDir, filename);
+
+            const dataContent = JSON.stringify(league, null, 2);
+            fs.writeFile(filepath, dataContent, (err) => {
+                if (err) console.error(`[${league.code}] Error saving snapshot:`, err);
+            });
+
+            // --- PERSIST TO SUPABASE ---
+            if (supabase) {
+                const { error } = await supabase
+                    .from('leagues')
+                    .upsert({ code: league.code, data: league, updated_at: new Date() });
+
+                if (error) console.error(`[${league.code}] DB Persist Error:`, error.message);
+            }
+        } catch (e) {
+            console.error(`[${league.code}] Snapshot failed:`, e);
+        }
+    }
+};

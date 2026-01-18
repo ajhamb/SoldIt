@@ -37,20 +37,29 @@ async function remoteLog(msg) {
 const originalLog = console.log;
 const originalError = console.error;
 
+function formatArgs(args) {
+    return args.map(arg => {
+        if (arg instanceof Error) {
+            return `${arg.message}\n${arg.stack}`;
+        }
+        return typeof arg === 'object' ? JSON.stringify(arg) : arg;
+    }).join(' ');
+}
+
 console.log = function (...args) {
-    const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' ');
+    const msg = formatArgs(args);
     const logLine = `[${getTimestamp()}] ${msg}`;
     logFile.write(logLine + '\n');
     remoteLog(logLine);
-    // originalLog.apply(console, args); // DISABLED: Log only to file/remote
+    originalLog.apply(console, args);
 };
 
 console.error = function (...args) {
-    const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' ');
+    const msg = formatArgs(args);
     const logLine = `[${getTimestamp()}] [ERROR] ${msg}`;
     logFile.write(logLine + '\n');
     remoteLog(logLine);
-    // originalError.apply(console, args); // DISABLED: Log only to file/remote
+    originalError.apply(console, args);
 };
 
 console.log("--- SERVER STARTUP ---");
@@ -65,13 +74,36 @@ const io = new Server(server, {
     }
 });
 
-// In-memory data store
+// In-memory data store (hydrated from Supabase on startup)
 const data = {
     leagues: new Map(),
 };
 
+async function hydrateFromDB() {
+    if (supabase) {
+        console.log("--- HYDRATING FROM SUPABASE ---");
+        try {
+            const { data: dbLeagues, error } = await supabase.from('leagues').select('*');
+            if (error) {
+                console.error("Hydration failed:", error.message);
+                return;
+            }
+            if (dbLeagues) {
+                dbLeagues.forEach(row => {
+                    data.leagues.set(row.code, row.data);
+                });
+                console.log(`Successfully hydrated ${dbLeagues.length} leagues.`);
+            }
+        } catch (e) {
+            console.error("Hydration error:", e);
+        }
+    } else {
+        console.log("Supabase not configured. Starting with empty memory.");
+    }
+}
+
 io.on('connection', (socket) => {
-    socketHandler(io, socket, data);
+    socketHandler(io, socket, data, supabase);
 });
 
 const PORT = process.env.PORT || 3000;
@@ -81,14 +113,13 @@ const clientDistPath = path.join(__dirname, '../client/dist');
 if (fs.existsSync(clientDistPath)) {
     app.use(express.static(clientDistPath));
     // Catch-all to serve index.html for client-side routing
-    // Express 5 / path-to-regexp v8 is strict about string wildcards.
-    // Using a regex literal is a safe way to match everything.
     app.get(/^(?!\/socket\.io).*/, (req, res) => {
         res.sendFile(path.join(clientDistPath, 'index.html'));
     });
 }
 
-server.listen(PORT, () => {
+server.listen(PORT, async () => {
+    await hydrateFromDB();
     console.log(`Server running on port ${PORT}`);
 });
 

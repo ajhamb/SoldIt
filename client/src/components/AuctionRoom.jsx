@@ -166,6 +166,7 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
                                 myTeam={myTeam}
                                 basePrice={leagueState.config.basePrice}
                                 maxBid={leagueState.config?.maxBid}
+                                playersPerTeam={leagueState.config?.playersPerTeam}
                                 hasPassed={leagueState.passedTeams?.includes(myTeam.name)}
                                 activeTurn={activeTurn}
                             />

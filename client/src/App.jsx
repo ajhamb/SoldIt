@@ -29,7 +29,14 @@ function App() {
 
     socket.on('connect', () => setIsConnected(true));
     socket.on('disconnect', () => setIsConnected(false));
-    // ... (existing socket handlers)
+
+    socket.on('LEAGUE_UPDATE', (state) => {
+      setLeagueState(state);
+    });
+
+    socket.on('ADMIN_RESTORE', (state) => {
+      setLeagueState(state);
+    });
     socket.on('ERROR', (err) => {
       alert(err.message);
       if (err.message.includes('not found') || err.message.includes('Full')) {
