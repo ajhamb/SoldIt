@@ -10,7 +10,7 @@ npm-debug.log*
 logfile.txt
 
 # Backups (Auction snapshots)
-backups/
+backups*/
 
 # System
 .DS_Store

@@ -52,6 +52,19 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
+
+// --- SERVE FRONTEND ---
+const clientDistPath = path.join(__dirname, '../client/dist');
+if (fs.existsSync(clientDistPath)) {
+    app.use(express.static(clientDistPath));
+    // Catch-all to serve index.html for client-side routing
+    app.get('*', (req, res) => {
+        if (!req.path.startsWith('/socket.io')) {
+            res.sendFile(path.join(clientDistPath, 'index.html'));
+        }
+    });
+}
+
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });

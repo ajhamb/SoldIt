@@ -567,7 +567,13 @@ function saveSnapshot(league, suffix = '') {
         const timestamp = Date.now();
         const s = suffix ? `-${suffix}` : '';
         const filename = `${league.code}-${league.name.replace(/[^a-z0-9]/gi, '_')}-${timestamp}${s}.json`;
-        const filepath = path.join(__dirname, 'backups', filename);
+        const backupDir = path.join(__dirname, 'backups');
+
+        if (!fs.existsSync(backupDir)) {
+            fs.mkdirSync(backupDir, { recursive: true });
+        }
+
+        const filepath = path.join(backupDir, filename);
 
         const data = JSON.stringify(league, null, 2);
         fs.writeFile(filepath, data, (err) => {
