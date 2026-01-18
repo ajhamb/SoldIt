@@ -58,11 +58,10 @@ const clientDistPath = path.join(__dirname, '../client/dist');
 if (fs.existsSync(clientDistPath)) {
     app.use(express.static(clientDistPath));
     // Catch-all to serve index.html for client-side routing
-    // Express 5 requires named parameters for wildcards
-    app.get('/:path*', (req, res) => {
-        if (!req.path.startsWith('/socket.io')) {
-            res.sendFile(path.join(clientDistPath, 'index.html'));
-        }
+    // Express 5 / path-to-regexp v8 is strict about string wildcards.
+    // Using a regex literal is a safe way to match everything.
+    app.get(/^(?!\/socket\.io).*/, (req, res) => {
+        res.sendFile(path.join(clientDistPath, 'index.html'));
     });
 }
 
