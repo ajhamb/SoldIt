@@ -30,8 +30,8 @@ function App() {
     socket.on('connect', () => setIsConnected(true));
     socket.on('disconnect', () => setIsConnected(false));
 
-    socket.on('LEAGUE_UPDATE', (state) => {
-      setLeagueState(state);
+    socket.on('LEAGUE_UPDATE', (newState) => {
+      setLeagueState(prev => prev ? { ...prev, ...newState } : newState);
     });
 
     socket.on('ADMIN_RESTORE', (state) => {

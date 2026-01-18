@@ -11,6 +11,16 @@ module.exports = (io, socket, data, supabase) => {
         let league = data.leagues.get(leagueCode);
 
         if (role === 'ADMIN') {
+            // If settings.players exists, it means the user is trying to CREATE a new league
+            const isCreating = settings && settings.players && settings.players.length > 0;
+
+            if (isCreating && league) {
+                // Collision! This code is already in use.
+                return socket.emit('ERROR', {
+                    message: `League Code ${leagueCode} is already in use. Please try again (your browser should generate a new code).`
+                });
+            }
+
             if (!league) {
                 // Validate settings or use defaults
                 const config = settings || {};
@@ -58,7 +68,8 @@ module.exports = (io, socket, data, supabase) => {
                     activityLog: [] // [{ type: 'BID', text: '...' }]
                 };
                 data.leagues.set(leagueCode, league);
-                console.log(`[${leagueCode}][CREATE] League ${league.name} created. Admin PIN: ${league.adminPin}`);
+                console.log(`[${leagueCode}][CREATE] League ${league.name} created.`);
+                socket.emit('ADMIN_RESTORE', { ...league, isNew: true });
             } else {
                 // Rejoin as admin
                 // Verify PIN
@@ -68,8 +79,8 @@ module.exports = (io, socket, data, supabase) => {
                 }
 
                 league.adminId = socket.id;
+                socket.emit('ADMIN_RESTORE', league);
             }
-            socket.emit('ADMIN_RESTORE', league);
         } else {
             // CAPTAIN
             if (!league) {

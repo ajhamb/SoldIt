@@ -11,6 +11,9 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
     // PIN Toggle
     const [showPin, setShowPin] = useState(false);
 
+    // One-time onboarding modal for new leagues
+    const [showSuccess, setShowSuccess] = useState(!!leagueState?.isNew);
+
     if (!leagueState) return <div className="container">Loading Auction Room...</div>;
 
     const { currentPlayer, currentBid, teams, state, players, config, biddingOrder, activeTurn } = leagueState;
@@ -68,8 +71,13 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
                             <h2 className="text-gold" style={{ margin: 0, fontSize: '1.5rem' }}>LEAGUE: {leagueCode}</h2>
                             <small className="text-muted">{leagueState.name}</small>
                             {role === 'ADMIN' && leagueState.adminPin && (
-                                <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#ff7777', cursor: 'pointer' }} onClick={() => setShowPin(!showPin)}>
-                                    🔑 PIN: {showPin ? leagueState.adminPin : '******'} (Click to reveal)
+                                <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#ff7777' }}>
+                                    <span style={{ cursor: 'pointer' }} onClick={() => setShowPin(!showPin)}>
+                                        🔑 ADMIN PIN: <strong>{showPin ? leagueState.adminPin : '******'}</strong> (Click to {showPin ? 'hide' : 'reveal'})
+                                    </span>
+                                    <span style={{ marginLeft: '1rem', fontWeight: 'bold', color: 'var(--primary)' }}>
+                                        ⚠️ PLEASE SAVE THIS PIN and LEAGUE CODE Above!
+                                    </span>
                                 </div>
                             )}
                         </div>
@@ -221,6 +229,39 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
             )}
             {showRules && (
                 <RulesModal config={config} onClose={() => setShowRules(false)} />
+            )}
+
+            {/* --- ONBOARDING / SUCCESS MODAL --- */}
+            {showSuccess && role === 'ADMIN' && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+                    background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    zIndex: 2000, padding: '1rem'
+                }}>
+                    <div className="card neon-border" style={{ maxWidth: '500px', width: '100%', textAlign: 'center', padding: '2rem' }}>
+                        <h2 style={{ color: 'var(--primary)', marginBottom: '1rem' }}>🎉 LEAGUE CREATED!</h2>
+                        <p style={{ color: '#ccc', marginBottom: '2rem' }}>Please save your credentials carefully!</p>
+
+                        <div style={{ background: '#111', padding: '1.5rem', borderRadius: '8px', border: '1px solid #333', marginBottom: '2rem' }}>
+                            <div style={{ marginBottom: '1.5rem' }}>
+                                <small style={{ color: '#888', display: 'block', textTransform: 'uppercase', fontSize: '0.7rem' }}>League Code</small>
+                                <strong style={{ fontSize: '2.5rem', color: '#fff', letterSpacing: '2px' }}>{leagueCode}</strong>
+                            </div>
+                            <div>
+                                <small style={{ color: '#888', display: 'block', textTransform: 'uppercase', fontSize: '0.7rem' }}>Admin PIN</small>
+                                <strong style={{ fontSize: '2.5rem', color: '#fca5a5', letterSpacing: '2px' }}>{leagueState.adminPin}</strong>
+                            </div>
+                        </div>
+
+                        <div style={{ background: 'rgba(255, 119, 119, 0.1)', padding: '1rem', borderRadius: '4px', border: '1px solid #ff7777', marginBottom: '2rem', fontSize: '0.9rem', color: '#ff7777' }}>
+                            ⚠️ <strong>IMPORTANT:</strong> You will need both the League Code and PIN to rejoin as Admin if you refresh or switch devices.
+                        </div>
+
+                        <button className="btn btn-primary" style={{ width: '100%', padding: '1rem' }} onClick={() => setShowSuccess(false)}>
+                            I HAVE SAVED THEM!
+                        </button>
+                    </div>
+                </div>
             )}
         </div>
     );

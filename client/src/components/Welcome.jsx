@@ -101,7 +101,7 @@ export default function Welcome({ onJoin }) {
         if (!name) return alert("Please enter your Admin Name");
         if (config.players.length === 0) return alert("Please add at least one player to the league!");
 
-        const newCode = Math.random().toString(36).substring(2, 7).toUpperCase();
+        const newCode = Math.random().toString(36).substring(2, 8).toUpperCase();
         // Create as Admin
         onJoin(name, newCode, 'ADMIN', config);
     };
