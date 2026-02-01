@@ -109,8 +109,9 @@ export default function Welcome({ onJoin }) {
     const handleJoin = () => {
         if (!name || !code) return alert("Please enter Name and League Code");
         if (role === 'ADMIN' && !pin) return alert("Admin PIN is required to rejoin as Admin");
+        if (role === 'CAPTAIN' && !pin) return alert("Captain PIN is required to join/rejoin as Captain");
 
-        onJoin(name, code, role, role === 'ADMIN' ? { adminPin: pin } : {});
+        onJoin(name, code, role, role === 'ADMIN' ? { adminPin: pin } : { captainPin: pin });
     };
 
     // Render Helpers
@@ -298,6 +299,13 @@ export default function Welcome({ onJoin }) {
                         <div>
                             <label style={{ display: 'block', marginBottom: '0.5rem', color: '#fca5a5' }}>Admin PIN</label>
                             <input type="password" value={pin} onChange={e => setPin(e.target.value)} style={{ ...inputStyle, borderColor: '#fca5a5' }} placeholder="******" />
+                        </div>
+                    )}
+
+                    {role === 'CAPTAIN' && (
+                        <div>
+                            <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--primary)' }}>Captain PIN</label>
+                            <input type="password" value={pin} onChange={e => setPin(e.target.value)} style={{ ...inputStyle, borderColor: 'var(--primary)' }} placeholder="******" />
                         </div>
                     )}
 

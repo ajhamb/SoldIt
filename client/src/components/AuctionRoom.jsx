@@ -73,10 +73,10 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
                             {role === 'ADMIN' && leagueState.adminPin && (
                                 <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#ff7777' }}>
                                     <span style={{ cursor: 'pointer' }} onClick={() => setShowPin(!showPin)}>
-                                        🔑 ADMIN PIN: <strong>{showPin ? leagueState.adminPin : '******'}</strong> (Click to {showPin ? 'hide' : 'reveal'})
+                                        🔑 {showPin ? `ADMIN: ${leagueState.adminPin} / CAPTAIN: ${leagueState.captainPin}` : 'PINs: ******'} (Click to {showPin ? 'hide' : 'reveal'})
                                     </span>
                                     <span style={{ marginLeft: '1rem', fontWeight: 'bold', color: 'var(--primary)' }}>
-                                        ⚠️ PLEASE SAVE THIS PIN and LEAGUE CODE Above!
+                                        ⚠️ PLEASE SAVE THESE PINs and LEAGUE CODE Above!
                                     </span>
                                 </div>
                             )}
@@ -247,9 +247,15 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
                                 <small style={{ color: '#888', display: 'block', textTransform: 'uppercase', fontSize: '0.7rem' }}>League Code</small>
                                 <strong style={{ fontSize: '2.5rem', color: '#fff', letterSpacing: '2px' }}>{leagueCode}</strong>
                             </div>
-                            <div>
-                                <small style={{ color: '#888', display: 'block', textTransform: 'uppercase', fontSize: '0.7rem' }}>Admin PIN</small>
-                                <strong style={{ fontSize: '2.5rem', color: '#fca5a5', letterSpacing: '2px' }}>{leagueState.adminPin}</strong>
+                            <div style={{ marginBottom: '1.5rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                <div>
+                                    <small style={{ color: '#888', display: 'block', textTransform: 'uppercase', fontSize: '0.7rem' }}>Admin PIN</small>
+                                    <strong style={{ fontSize: '2rem', color: '#fca5a5', letterSpacing: '2px' }}>{leagueState.adminPin}</strong>
+                                </div>
+                                <div>
+                                    <small style={{ color: '#888', display: 'block', textTransform: 'uppercase', fontSize: '0.7rem' }}>Captain PIN</small>
+                                    <strong style={{ fontSize: '2rem', color: 'var(--primary)', letterSpacing: '2px' }}>{leagueState.captainPin}</strong>
+                                </div>
                             </div>
                         </div>
 

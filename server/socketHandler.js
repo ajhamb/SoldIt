@@ -54,6 +54,7 @@ module.exports = (io, socket, data, supabase) => {
                         maxBid: parseInt(config.maxBid) || Infinity // No limit if not set
                     },
                     adminPin: Math.floor(100000 + Math.random() * 900000).toString(),
+                    captainPin: Math.floor(100000 + Math.random() * 900000).toString(),
                     teams: [],
                     players: initialPlayers,
                     unpickedPlayers: [...initialPlayers], // Copy for randomizer
@@ -68,7 +69,7 @@ module.exports = (io, socket, data, supabase) => {
                     activityLog: [] // [{ type: 'BID', text: '...' }]
                 };
                 data.leagues.set(leagueCode, league);
-                console.log(`[${leagueCode}][CREATE] League ${league.name} created.`);
+                console.log(`[${leagueCode}][CREATE] League ${league.name} created. Admin PIN: ${league.adminPin}, Captain PIN: ${league.captainPin}`);
                 socket.emit('ADMIN_RESTORE', { ...league, isNew: true });
             } else {
                 // Rejoin as admin
@@ -85,6 +86,12 @@ module.exports = (io, socket, data, supabase) => {
             // CAPTAIN
             if (!league) {
                 socket.emit('ERROR', { message: "League not found" });
+                return;
+            }
+
+            // Verify Captain PIN
+            if (league.captainPin && settings?.captainPin !== league.captainPin) {
+                socket.emit('ERROR', { message: "Invalid Captain PIN!" });
                 return;
             }
 
