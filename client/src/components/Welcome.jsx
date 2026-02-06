@@ -3,6 +3,7 @@ import { useState } from 'react';
 export default function Welcome({ onJoin }) {
     const [view, setView] = useState('MENU'); // MENU, CREATE, JOIN
     const [showCsvHelp, setShowCsvHelp] = useState(false);
+    const [showHowTo, setShowHowTo] = useState(false);
 
     // User Identity
     const [name, setName] = useState('');
@@ -127,12 +128,21 @@ export default function Welcome({ onJoin }) {
 
             {/* --- MENU VIEW --- */}
             {view === 'MENU' && (
-                <div style={{ display: 'flex', gap: '2rem' }}>
-                    <button className="btn btn-primary" onClick={() => setView('CREATE')}>
-                        Create New League
-                    </button>
-                    <button className="btn" style={{ background: 'transparent', border: '2px solid var(--secondary)', color: 'var(--secondary)' }} onClick={() => setView('JOIN')}>
-                        Join Existing League
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: '2rem' }}>
+                        <button className="btn btn-primary" onClick={() => setView('CREATE')}>
+                            Create New League
+                        </button>
+                        <button className="btn" style={{ background: 'transparent', border: '2px solid var(--secondary)', color: 'var(--secondary)' }} onClick={() => setView('JOIN')}>
+                            Join Existing League
+                        </button>
+                    </div>
+                    <button
+                        className="btn"
+                        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid #444', color: '#888', fontSize: '0.9rem', padding: '0.6rem 2rem' }}
+                        onClick={() => setShowHowTo(true)}
+                    >
+                        How To Play?
                     </button>
                 </div>
             )}
@@ -349,6 +359,52 @@ export default function Welcome({ onJoin }) {
                         </p>
                         <button className="btn btn-primary" style={{ width: '100%', marginTop: '1.5rem' }} onClick={() => setShowCsvHelp(false)}>
                             Got it!
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* --- HOW TO PLAY MODAL --- */}
+            {showHowTo && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+                    background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    zIndex: 2000, padding: '1rem'
+                }}>
+                    <div className="card neon-border" style={{ maxWidth: '600px', width: '100%', textAlign: 'left', position: 'relative', maxHeight: '90vh', overflowY: 'auto', padding: '2rem' }}>
+                        <button
+                            onClick={() => setShowHowTo(false)}
+                            style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'transparent', color: '#888', fontSize: '1.5rem', border: 'none', cursor: 'pointer' }}
+                        >
+                            ×
+                        </button>
+                        <h2 style={{ color: 'var(--primary)', marginBottom: '1.5rem', textAlign: 'center' }}>How to use SoldIt</h2>
+
+                        <div style={{ marginBottom: '2rem' }}>
+                            <h3 style={{ color: 'var(--secondary)', marginBottom: '0.8rem', fontSize: '1.2rem', borderBottom: '1px solid #333', paddingBottom: '0.5rem' }}>🏆 For League Admins (Creators)</h3>
+                            <ol style={{ paddingLeft: '1.2rem', color: '#ccc', lineHeight: '1.6' }}>
+                                <li>Click <strong>Create New League</strong> and enter your name.</li>
+                                <li>Configure settings: Team Count, Budget, and Squad Size.</li>
+                                <li>Add players manually or upload a <strong>CSV file</strong> (see CSV help).</li>
+                                <li>Click <strong>Start League</strong> to enter the room.</li>
+                                <li style={{ color: '#fca5a5' }}><strong>CRITICAL:</strong> Save the <strong>League Code</strong> and <strong>Admin PIN</strong>. You'll need them if you refresh!</li>
+                                <li>Share the <strong>League Code</strong> and <strong>Captain PIN</strong> with your captains.</li>
+                            </ol>
+                        </div>
+
+                        <div style={{ marginBottom: '2rem' }}>
+                            <h3 style={{ color: 'var(--secondary)', marginBottom: '0.8rem', fontSize: '1.2rem', borderBottom: '1px solid #333', paddingBottom: '0.5rem' }}>🏏 For Team Captains</h3>
+                            <ol style={{ paddingLeft: '1.2rem', color: '#ccc', lineHeight: '1.6' }}>
+                                <li>Click <strong>Join Existing League</strong>.</li>
+                                <li>Enter the <strong>League Code</strong> provided by your Admin.</li>
+                                <li>Enter your <strong>Team Name</strong>.</li>
+                                <li>Select <strong>Captain</strong> role and enter the <strong>Captain PIN</strong> provided by your Admin.</li>
+                                <li>Click <strong>Enter Room</strong> and wait for the Admin to start the auction.</li>
+                            </ol>
+                        </div>
+
+                        <button className="btn btn-primary" style={{ width: '100%', marginTop: '1rem' }} onClick={() => setShowHowTo(false)}>
+                            Got it, Let's Go!
                         </button>
                     </div>
                 </div>
