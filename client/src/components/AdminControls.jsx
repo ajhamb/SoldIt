@@ -20,10 +20,10 @@ export default function AdminControls({ socket, leagueCode, maxBid }) {
     return (
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center', background: '#330000', borderColor: 'red' }}>
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', width: '100%', flexWrap: 'wrap' }}>
-                <button className="btn btn-primary" onClick={handleSold} style={{ background: '#22c55e', color: '#fff', fontSize: '1.2rem', padding: '1rem 3rem' }}>
+                <button id="admin-sold-btn" className="btn btn-primary" onClick={handleSold} style={{ background: '#22c55e', color: '#fff', fontSize: '1.2rem', padding: '1rem 3rem' }}>
                     SOLD
                 </button>
-                <button className="btn"
+                <button id="admin-skip-btn" className="btn"
                     style={{ background: '#333', border: '1px solid #555', color: '#ccc' }}
                     onClick={() => socket.emit('SKIP_PLAYER', { leagueCode })}
                 >

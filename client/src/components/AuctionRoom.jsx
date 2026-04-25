@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import AdminControls from './AdminControls';
 import CaptainControls from './CaptainControls';
 import PlayerListView from './PlayerListView';
@@ -12,7 +12,13 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
     const [showPin, setShowPin] = useState(false);
 
     // One-time onboarding modal for new leagues
-    const [showSuccess, setShowSuccess] = useState(!!leagueState?.isNew);
+    const [showSuccess, setShowSuccess] = useState(false);
+
+    useEffect(() => {
+        if (leagueState?.isNew) {
+            setShowSuccess(true);
+        }
+    }, [leagueState?.isNew]);
 
     if (!leagueState) return <div className="container">Loading Auction Room...</div>;
 
@@ -118,6 +124,7 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
                                 {role === 'ADMIN' && (
                                     <div style={{ marginTop: '2rem' }}>
                                         <button
+                                            id="start-auction-btn"
                                             className="btn btn-primary"
                                             onClick={() => socket.emit('START_AUCTION', { leagueCode })}
                                             disabled={teams.length < leagueState.config?.teamCount}
@@ -245,16 +252,16 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
                         <div style={{ background: '#111', padding: '1.5rem', borderRadius: '8px', border: '1px solid #333', marginBottom: '2rem' }}>
                             <div style={{ marginBottom: '1.5rem' }}>
                                 <small style={{ color: '#888', display: 'block', textTransform: 'uppercase', fontSize: '0.7rem' }}>League Code</small>
-                                <strong style={{ fontSize: '2.5rem', color: '#fff', letterSpacing: '2px' }}>{leagueCode}</strong>
+                                <strong id="modal-league-code" style={{ fontSize: '2.5rem', color: '#fff', letterSpacing: '2px' }}>{leagueCode}</strong>
                             </div>
                             <div style={{ marginBottom: '1.5rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                                 <div>
                                     <small style={{ color: '#888', display: 'block', textTransform: 'uppercase', fontSize: '0.7rem' }}>Admin PIN</small>
-                                    <strong style={{ fontSize: '2rem', color: '#fca5a5', letterSpacing: '2px' }}>{leagueState.adminPin}</strong>
+                                    <strong id="modal-admin-pin" style={{ fontSize: '2rem', color: '#fca5a5', letterSpacing: '2px' }}>{leagueState.adminPin}</strong>
                                 </div>
                                 <div>
                                     <small style={{ color: '#888', display: 'block', textTransform: 'uppercase', fontSize: '0.7rem' }}>Captain PIN</small>
-                                    <strong style={{ fontSize: '2rem', color: 'var(--primary)', letterSpacing: '2px' }}>{leagueState.captainPin}</strong>
+                                    <strong id="modal-captain-pin" style={{ fontSize: '2rem', color: 'var(--primary)', letterSpacing: '2px' }}>{leagueState.captainPin}</strong>
                                 </div>
                             </div>
                         </div>
@@ -263,7 +270,7 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
                             ⚠️ <strong>IMPORTANT:</strong> You will need both the League Code and PIN to rejoin as Admin if you refresh or switch devices.
                         </div>
 
-                        <button className="btn btn-primary" style={{ width: '100%', padding: '1rem' }} onClick={() => setShowSuccess(false)}>
+                        <button id="onboarding-close-btn" className="btn btn-primary" style={{ width: '100%', padding: '1rem' }} onClick={() => setShowSuccess(false)}>
                             I HAVE SAVED THEM!
                         </button>
                     </div>

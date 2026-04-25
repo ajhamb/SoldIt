@@ -130,10 +130,10 @@ export default function Welcome({ onJoin }) {
             {view === 'MENU' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center' }}>
                     <div style={{ display: 'flex', gap: '2rem' }}>
-                        <button className="btn btn-primary" onClick={() => setView('CREATE')}>
+                        <button id="create-league-btn" className="btn btn-primary" onClick={() => setView('CREATE')}>
                             Create New League
                         </button>
-                        <button className="btn" style={{ background: 'transparent', border: '2px solid var(--secondary)', color: 'var(--secondary)' }} onClick={() => setView('JOIN')}>
+                        <button id="join-league-btn" className="btn" style={{ background: 'transparent', border: '2px solid var(--secondary)', color: 'var(--secondary)' }} onClick={() => setView('JOIN')}>
                             Join Existing League
                         </button>
                     </div>
@@ -154,7 +154,7 @@ export default function Welcome({ onJoin }) {
 
                     <div>
                         <label style={{ display: 'block', marginBottom: '0.5rem' }}>Your Admin Name</label>
-                        <input type="text" value={name} onChange={e => setName(e.target.value)} style={inputStyle} placeholder="e.g. Commissioner" />
+                        <input id="admin-name-input" type="text" value={name} onChange={e => setName(e.target.value)} style={inputStyle} placeholder="e.g. Commissioner" />
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
@@ -264,7 +264,7 @@ export default function Welcome({ onJoin }) {
                     )}
 
                     <div style={{ marginTop: '2rem', display: 'flex', gap: '1rem' }}>
-                        <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleCreate}>Start League</button>
+                        <button id="start-league-final-btn" className="btn btn-primary" style={{ flex: 1 }} onClick={handleCreate}>Start League</button>
                         <button onClick={() => setView('MENU')} style={{ background: 'transparent', color: '#777', border: '1px solid #444', padding: '0 1rem', borderRadius: '8px' }}>Back</button>
                     </div>
                 </div>
@@ -277,18 +277,19 @@ export default function Welcome({ onJoin }) {
 
                     <div>
                         <label style={{ display: 'block', marginBottom: '0.5rem' }}>League Code</label>
-                        <input type="text" value={code} onChange={e => setCode(e.target.value)} style={inputStyle} placeholder="e.g. ABCD-1234" />
+                        <input id="join-league-code-input" type="text" value={code} onChange={e => setCode(e.target.value)} style={inputStyle} placeholder="e.g. ABCD-1234" />
                     </div>
 
                     <div>
                         <label style={{ display: 'block', marginBottom: '0.5rem' }}>{role === 'ADMIN' ? 'League Name' : 'Team Name'}</label>
-                        <input type="text" value={name} onChange={e => setName(e.target.value)} style={inputStyle} placeholder={role === 'ADMIN' ? "e.g. Premier League" : "e.g. Royal Challengers"} />
+                        <input id="join-name-input" type="text" value={name} onChange={e => setName(e.target.value)} style={inputStyle} placeholder={role === 'ADMIN' ? "e.g. Premier League" : "e.g. Royal Challengers"} />
                     </div>
 
                     <div style={{ marginBottom: '1rem' }}>
                         <label style={{ display: 'block', marginBottom: '0.5rem' }}>I am a...</label>
                         <div style={{ display: 'flex', gap: '1rem' }}>
                             <button
+                                id="role-captain-btn"
                                 className={`btn ${role === 'CAPTAIN' ? 'btn-primary' : ''}`}
                                 style={{ flex: 1, border: '1px solid #555' }}
                                 onClick={() => setRole('CAPTAIN')}
@@ -296,6 +297,7 @@ export default function Welcome({ onJoin }) {
                                 Captain
                             </button>
                             <button
+                                id="role-admin-btn"
                                 className={`btn ${role === 'ADMIN' ? 'btn-primary' : ''}`}
                                 style={{ flex: 1, border: '1px solid #555' }}
                                 onClick={() => setRole('ADMIN')}
@@ -308,19 +310,19 @@ export default function Welcome({ onJoin }) {
                     {role === 'ADMIN' && (
                         <div>
                             <label style={{ display: 'block', marginBottom: '0.5rem', color: '#fca5a5' }}>Admin PIN</label>
-                            <input type="password" value={pin} onChange={e => setPin(e.target.value)} style={{ ...inputStyle, borderColor: '#fca5a5' }} placeholder="******" />
+                            <input id="admin-pin-input" type="password" value={pin} onChange={e => setPin(e.target.value)} style={{ ...inputStyle, borderColor: '#fca5a5' }} placeholder="******" />
                         </div>
                     )}
 
                     {role === 'CAPTAIN' && (
                         <div>
                             <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--primary)' }}>Captain PIN</label>
-                            <input type="password" value={pin} onChange={e => setPin(e.target.value)} style={{ ...inputStyle, borderColor: 'var(--primary)' }} placeholder="******" />
+                            <input id="captain-pin-input" type="password" value={pin} onChange={e => setPin(e.target.value)} style={{ ...inputStyle, borderColor: 'var(--primary)' }} placeholder="******" />
                         </div>
                     )}
 
                     <div style={{ marginTop: '2rem', display: 'flex', gap: '1rem' }}>
-                        <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleJoin}>Enter Room</button>
+                        <button id="enter-room-btn" className="btn btn-primary" style={{ flex: 1 }} onClick={handleJoin}>Enter Room</button>
                         <button onClick={() => setView('MENU')} style={{ background: 'transparent', color: '#777', border: '1px solid #444', padding: '0 1rem', borderRadius: '8px' }}>Back</button>
                     </div>
                 </div>

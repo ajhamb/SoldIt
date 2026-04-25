@@ -53,6 +53,7 @@ export default function CaptainControls({ socket, leagueCode, currentBid, myTeam
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center' }}>
                 <div style={{ display: 'flex', gap: '0.5rem', width: '100%', justifyContent: 'center' }}>
                     <input
+                        id="bid-amount-input"
                         type="number"
                         value={customBid}
                         onChange={e => setCustomBid(e.target.value)}
@@ -71,6 +72,7 @@ export default function CaptainControls({ socket, leagueCode, currentBid, myTeam
                         }}
                     />
                     <button
+                        id="place-bid-btn"
                         className="btn btn-primary"
                         style={{ padding: '0 2rem', fontSize: '1.2rem' }}
                         onClick={placeBid}
@@ -88,7 +90,9 @@ export default function CaptainControls({ socket, leagueCode, currentBid, myTeam
                     <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>Max Reachable: {maxReachableBid} Th</span>
                 </div>
 
-                <button className="btn"
+                <button
+                    id="captain-pass-btn"
+                    className="btn"
                     style={{
                         width: '100%',
                         background: (hasPassed || !isMyTurn) ? '#333' : '#ff3333',
