@@ -71,7 +71,9 @@ const io = new Server(server, {
     cors: {
         origin: "*", // Allow all for MVP
         methods: ["GET", "POST"]
-    }
+    },
+    pingInterval: 4000,  // ping every 4 seconds
+    pingTimeout: 10000   // timeout if no response within 10 seconds
 });
 
 // In-memory data store (hydrated from Supabase on startup)

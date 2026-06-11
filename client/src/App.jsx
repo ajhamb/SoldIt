@@ -18,16 +18,36 @@ function App() {
     const savedSession = localStorage.getItem('auction_session');
     if (savedSession) {
       try {
-        const { name: sName, leagueCode: sCode, role: sRole } = JSON.parse(savedSession);
+        const { name: sName, leagueCode: sCode, role: sRole, pin: sPin } = JSON.parse(savedSession);
         if (sName && sCode && sRole) {
-          handleJoin(sName, sCode, sRole);
+          handleJoin(sName, sCode, sRole, sRole === 'ADMIN' ? { adminPin: sPin } : { captainPin: sPin });
         }
       } catch (e) {
         localStorage.removeItem('auction_session');
       }
     }
 
-    socket.on('connect', () => setIsConnected(true));
+    socket.on('connect', () => {
+      setIsConnected(true);
+      // Auto-rejoin on connection restore if session credentials exist
+      const sessionData = localStorage.getItem('auction_session');
+      if (sessionData) {
+        try {
+          const { name: sName, leagueCode: sCode, role: sRole, pin: sPin } = JSON.parse(sessionData);
+          if (sName && sCode && sRole) {
+            socket.emit('JOIN_LEAGUE', {
+              leagueCode: sCode,
+              name: sName,
+              role: sRole,
+              settings: sRole === 'ADMIN' ? { adminPin: sPin } : { captainPin: sPin }
+            });
+          }
+        } catch (e) {
+          // Ignore
+        }
+      }
+    });
+
     socket.on('disconnect', () => setIsConnected(false));
 
     socket.on('LEAGUE_UPDATE', (newState) => {
@@ -36,10 +56,24 @@ function App() {
 
     socket.on('ADMIN_RESTORE', (state) => {
       setLeagueState(state);
+      // Cache server-generated admin PIN in localStorage
+      if (state && state.adminPin) {
+        const sessionData = localStorage.getItem('auction_session');
+        if (sessionData) {
+          try {
+            const session = JSON.parse(sessionData);
+            session.pin = state.adminPin;
+            localStorage.setItem('auction_session', JSON.stringify(session));
+          } catch (e) {
+            // Ignore
+          }
+        }
+      }
     });
+
     socket.on('ERROR', (err) => {
       alert(err.message);
-      if (err.message.includes('not found') || err.message.includes('Full')) {
+      if (err.message.includes('not found') || err.message.includes('Full') || err.message.includes('PIN')) {
         localStorage.removeItem('auction_session');
         setRole(null);
       }
@@ -60,11 +94,14 @@ function App() {
     setLeagueCode(enteredCode);
     setRole(chosenRole);
 
-    // Persist session
+    const savedPin = settings.adminPin || settings.captainPin;
+
+    // Persist session including security PIN
     localStorage.setItem('auction_session', JSON.stringify({
       name: enteredName,
       leagueCode: enteredCode,
-      role: chosenRole
+      role: chosenRole,
+      pin: savedPin
     }));
 
     socket.emit('JOIN_LEAGUE', {
@@ -82,11 +119,35 @@ function App() {
   };
 
   if (!role) {
-    return <Welcome onJoin={handleJoin} />;
+    return (
+      <>
+        {!isConnected && (
+          <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0,
+            background: '#ef4444', color: '#fff', textAlign: 'center',
+            padding: '0.5rem', zIndex: 9999, fontSize: '0.9rem', fontWeight: 'bold',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.5)'
+          }}>
+            ⚠️ Connection lost. Reconnecting...
+          </div>
+        )}
+        <Welcome onJoin={handleJoin} />
+      </>
+    );
   }
 
   return (
     <div className="app-container">
+      {!isConnected && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0,
+          background: '#ef4444', color: '#fff', textAlign: 'center',
+          padding: '0.5rem', zIndex: 9999, fontSize: '0.9rem', fontWeight: 'bold',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.5)'
+        }}>
+          ⚠️ Connection lost. Reconnecting...
+        </div>
+      )}
       <div style={{ position: 'fixed', top: 10, right: 10, zIndex: 1000 }}>
         <button onClick={handleLogout} className="btn-secondary" style={{ padding: '0.3rem 0.6rem', fontSize: '0.7rem' }}>EXIT LEAGUE</button>
       </div>
