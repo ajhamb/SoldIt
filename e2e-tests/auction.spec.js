@@ -5,7 +5,11 @@ test.describe('SoldIt E2E Auction Flow', () => {
         test.setTimeout(90000);
 
         // 1. Admin setup
-        const adminContext = await browser.newContext();
+        const adminContext = await browser.newContext({
+            recordVideo: {
+                dir: 'test-results/videos/'
+            }
+        });
         const adminPage = await adminContext.newPage();
 
         adminPage.on('console', msg => {
@@ -49,7 +53,11 @@ test.describe('SoldIt E2E Auction Flow', () => {
         console.log('Admin: Modal closed');
 
         // 2. Captain setup
-        const captainContext = await browser.newContext();
+        const captainContext = await browser.newContext({
+            recordVideo: {
+                dir: 'test-results/videos/'
+            }
+        });
         const captainPage = await captainContext.newPage();
 
         await captainPage.goto('/');

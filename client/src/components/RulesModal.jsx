@@ -3,7 +3,7 @@ export default function RulesModal({ config, onClose }) {
 
     return (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 200, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            <div className="card" style={{ width: '400px', maxWidth: '90%', textAlign: 'center' }}>
+            <div className="card" style={{ width: '400px', maxWidth: '90%', maxHeight: '90vh', overflowY: 'auto', textAlign: 'center' }}>
                 <h3 style={{ borderBottom: '1px solid #444', paddingBottom: '0.5rem', marginTop: '1.5rem' }}>Auction Process (Admin Guide)</h3>
                 <ol style={{ marginLeft: '1.5rem', lineHeight: '1.6', color: '#ccc' }}>
                     <li><strong>Start:</strong> Admin clicks "START AUCTION" to begin. The system randomizes the player list.</li>

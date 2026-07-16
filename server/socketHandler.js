@@ -22,6 +22,10 @@ module.exports = (io, socket, data, supabase) => {
             }
 
             if (!league) {
+                if (!isCreating) {
+                    socket.emit('ERROR', { message: "League not found" });
+                    return;
+                }
                 // Validate settings or use defaults
                 const config = settings || {};
                 const basePrice = parseInt(config.basePrice) || 50;

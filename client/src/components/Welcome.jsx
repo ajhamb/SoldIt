@@ -150,7 +150,30 @@ export default function Welcome({ onJoin }) {
             {/* --- CREATE VIEW --- */}
             {view === 'CREATE' && (
                 <div className="card" style={{ width: '100%', maxWidth: '500px', textAlign: 'left' }}>
-                    <h2 style={{ marginBottom: '1.5rem', textAlign: 'center' }}>Create League</h2>
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1.5rem', position: 'relative' }}>
+                        <button 
+                            onClick={() => setView('MENU')} 
+                            style={{ 
+                                position: 'absolute', 
+                                left: 0, 
+                                background: 'transparent', 
+                                border: 'none', 
+                                color: 'var(--text-muted)', 
+                                fontSize: '1.2rem',
+                                padding: '0.2rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.3rem',
+                                cursor: 'pointer',
+                                transition: 'color 0.2s'
+                            }}
+                            onMouseEnter={(e) => e.target.style.color = 'var(--primary)'}
+                            onMouseLeave={(e) => e.target.style.color = 'var(--text-muted)'}
+                        >
+                            ←
+                        </button>
+                        <h2 style={{ width: '100%', margin: 0, textAlign: 'center' }}>Create League</h2>
+                    </div>
 
                     <div>
                         <label style={{ display: 'block', marginBottom: '0.5rem' }}>Your Admin Name</label>
@@ -263,9 +286,8 @@ export default function Welcome({ onJoin }) {
                         </div>
                     )}
 
-                    <div style={{ marginTop: '2rem', display: 'flex', gap: '1rem' }}>
-                        <button id="start-league-final-btn" className="btn btn-primary" style={{ flex: 1 }} onClick={handleCreate}>Start League</button>
-                        <button onClick={() => setView('MENU')} style={{ background: 'transparent', color: '#777', border: '1px solid #444', padding: '0 1rem', borderRadius: '8px' }}>Back</button>
+                    <div style={{ marginTop: '2rem' }}>
+                        <button id="start-league-final-btn" className="btn btn-primary" style={{ width: '100%' }} onClick={handleCreate}>Start League</button>
                     </div>
                 </div>
             )}
@@ -273,7 +295,30 @@ export default function Welcome({ onJoin }) {
             {/* --- JOIN VIEW --- */}
             {view === 'JOIN' && (
                 <div className="card" style={{ width: '400px', textAlign: 'left' }}>
-                    <h2 style={{ marginBottom: '1.5rem', textAlign: 'center' }}>Join League</h2>
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1.5rem', position: 'relative' }}>
+                        <button 
+                            onClick={() => setView('MENU')} 
+                            style={{ 
+                                position: 'absolute', 
+                                left: 0, 
+                                background: 'transparent', 
+                                border: 'none', 
+                                color: 'var(--text-muted)', 
+                                fontSize: '1.2rem',
+                                padding: '0.2rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.3rem',
+                                cursor: 'pointer',
+                                transition: 'color 0.2s'
+                            }}
+                            onMouseEnter={(e) => e.target.style.color = 'var(--primary)'}
+                            onMouseLeave={(e) => e.target.style.color = 'var(--text-muted)'}
+                        >
+                            ←
+                        </button>
+                        <h2 style={{ width: '100%', margin: 0, textAlign: 'center' }}>Join League</h2>
+                    </div>
 
                     <div>
                         <label style={{ display: 'block', marginBottom: '0.5rem' }}>League Code</label>
@@ -321,9 +366,8 @@ export default function Welcome({ onJoin }) {
                         </div>
                     )}
 
-                    <div style={{ marginTop: '2rem', display: 'flex', gap: '1rem' }}>
-                        <button id="enter-room-btn" className="btn btn-primary" style={{ flex: 1 }} onClick={handleJoin}>Enter Room</button>
-                        <button onClick={() => setView('MENU')} style={{ background: 'transparent', color: '#777', border: '1px solid #444', padding: '0 1rem', borderRadius: '8px' }}>Back</button>
+                    <div style={{ marginTop: '2rem' }}>
+                        <button id="enter-room-btn" className="btn btn-primary" style={{ width: '100%' }} onClick={handleJoin}>Enter Room</button>
                     </div>
                 </div>
             )}
