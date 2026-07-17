@@ -4,15 +4,33 @@ import CaptainControls from './CaptainControls';
 import PlayerListView from './PlayerListView';
 import ActivityWidget from './ActivityWidget';
 import RulesModal from './RulesModal';
+import { supabase } from '../supabaseClient';
 
 export default function AuctionRoom({ socket, role, name, leagueCode, leagueState }) {
     const [showPlayers, setShowPlayers] = useState(false);
     const [showRules, setShowRules] = useState(false);
-    // PIN Toggle
-    const [showPin, setShowPin] = useState(false);
-
     // One-time onboarding modal for new leagues
     const [showSuccess, setShowSuccess] = useState(false);
+
+    const [inviteEmail, setInviteEmail] = useState('');
+
+    const handleInvite = (e) => {
+        e.preventDefault();
+        if (!inviteEmail) return;
+        const cleanEmail = inviteEmail.trim().toLowerCase();
+        socket.emit('INVITE_CAPTAIN', { leagueCode, email: cleanEmail }, (response) => {
+            if (response && response.error) {
+                alert(response.error);
+            } else {
+                setInviteEmail('');
+            }
+        });
+    };
+
+    const handleRevoke = (id, email) => {
+        if (!confirm(`Revoke invitation for ${email}? This will eject them from the league room.`)) return;
+        socket.emit('REMOVE_CAPTAIN', { leagueCode, email });
+    };
 
     useEffect(() => {
         if (leagueState?.isNew) {
@@ -22,7 +40,7 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
 
     if (!leagueState) return <div className="container">Loading Auction Room...</div>;
 
-    const { currentPlayer, currentBid, teams, state, players, config, biddingOrder, activeTurn } = leagueState;
+    const { currentPlayer, currentBid, teams, state, players, config, biddingOrder, activeTurn, invitations } = leagueState;
     const isLive = state === 'LIVE';
 
     // Find my team if captain
@@ -76,16 +94,6 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
                         <div>
                             <h2 className="text-gold" style={{ margin: 0, fontSize: '1.5rem' }}>LEAGUE: {leagueCode}</h2>
                             <small className="text-muted">{leagueState.name}</small>
-                            {role === 'ADMIN' && leagueState.adminPin && (
-                                <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#ff7777' }}>
-                                    <span style={{ cursor: 'pointer' }} onClick={() => setShowPin(!showPin)}>
-                                        🔑 {showPin ? `ADMIN: ${leagueState.adminPin} / CAPTAIN: ${leagueState.captainPin}` : 'PINs: ******'} (Click to {showPin ? 'hide' : 'reveal'})
-                                    </span>
-                                    <span style={{ marginLeft: '1rem', fontWeight: 'bold', color: 'var(--primary)' }}>
-                                        ⚠️ PLEASE SAVE THESE PINs and LEAGUE CODE Above!
-                                    </span>
-                                </div>
-                            )}
                         </div>
 
                         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -136,6 +144,56 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
                                         {teams.length < leagueState.config?.teamCount && (
                                             <div style={{ marginTop: '1rem', color: '#ff7777', fontSize: '0.9rem' }}>
                                                 (Auction can only start when all {leagueState.config?.teamCount} teams have joined)
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {role === 'ADMIN' && (
+                                    <div className="card" style={{ marginTop: '2rem', padding: '1.5rem', background: 'rgba(0,0,0,0.2)', border: '1px solid #333', textAlign: 'left', width: '100%', maxWidth: '500px', margin: '2rem auto' }}>
+                                        <h3 style={{ margin: '0 0 1rem 0', color: 'var(--primary)' }}>Invite Captains by Email</h3>
+                                        <form onSubmit={handleInvite} style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
+                                            <input 
+                                                type="email" 
+                                                placeholder="captain@example.com" 
+                                                value={inviteEmail} 
+                                                onChange={e => setInviteEmail(e.target.value)} 
+                                                style={{ flex: 1, padding: '0.6rem', borderRadius: '4px', border: '1px solid #444', background: 'rgba(0,0,0,0.4)', color: '#fff', outline: 'none' }} 
+                                                required 
+                                            />
+                                            <button className="btn btn-primary" type="submit" style={{ padding: '0.6rem 1.2rem' }}>Invite</button>
+                                        </form>
+
+                                        <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.95rem', color: '#ccc' }}>Active Invitations ({(invitations || []).length})</h4>
+                                        {(!invitations || invitations.length === 0) ? (
+                                            <p style={{ color: '#666', fontSize: '0.85rem', margin: 0 }}>No captains invited yet.</p>
+                                        ) : (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '150px', overflowY: 'auto' }}>
+                                                {(invitations || []).map(invite => (
+                                                    <div key={invite.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '0.4rem 0.6rem', borderRadius: '4px', fontSize: '0.85rem' }}>
+                                                        <span style={{ color: '#ddd' }}>{invite.email}</span>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                            <span style={{ 
+                                                                padding: '0.1rem 0.4rem', 
+                                                                borderRadius: '3px', 
+                                                                fontSize: '0.7rem', 
+                                                                background: invite.status === 'JOINED' ? 'rgba(52, 211, 153, 0.2)' : 'rgba(245, 158, 11, 0.2)', 
+                                                                color: invite.status === 'JOINED' ? '#34d399' : '#f59e0b',
+                                                                fontWeight: 'bold'
+                                                            }}>
+                                                                {invite.status}
+                                                            </span>
+                                                            <button 
+                                                                type="button"
+                                                                onClick={() => handleRevoke(invite.id, invite.email)}
+                                                                style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.8rem', padding: '0.2rem' }}
+                                                                title="Revoke Invite"
+                                                            >
+                                                                ❌
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ))}
                                             </div>
                                         )}
                                     </div>
@@ -247,31 +305,21 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
                 }}>
                     <div className="card neon-border" style={{ maxWidth: '500px', width: '100%', textAlign: 'center', padding: '2rem' }}>
                         <h2 style={{ color: 'var(--primary)', marginBottom: '1rem' }}>🎉 LEAGUE CREATED!</h2>
-                        <p style={{ color: '#ccc', marginBottom: '2rem' }}>Please save your credentials carefully!</p>
+                        <p style={{ color: '#ccc', marginBottom: '2rem' }}>Please save your League Code carefully!</p>
 
                         <div style={{ background: '#111', padding: '1.5rem', borderRadius: '8px', border: '1px solid #333', marginBottom: '2rem' }}>
-                            <div style={{ marginBottom: '1.5rem' }}>
+                            <div style={{ marginBottom: '0.5rem' }}>
                                 <small style={{ color: '#888', display: 'block', textTransform: 'uppercase', fontSize: '0.7rem' }}>League Code</small>
                                 <strong id="modal-league-code" style={{ fontSize: '2.5rem', color: '#fff', letterSpacing: '2px' }}>{leagueCode}</strong>
                             </div>
-                            <div style={{ marginBottom: '1.5rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                <div>
-                                    <small style={{ color: '#888', display: 'block', textTransform: 'uppercase', fontSize: '0.7rem' }}>Admin PIN</small>
-                                    <strong id="modal-admin-pin" style={{ fontSize: '2rem', color: '#fca5a5', letterSpacing: '2px' }}>{leagueState.adminPin}</strong>
-                                </div>
-                                <div>
-                                    <small style={{ color: '#888', display: 'block', textTransform: 'uppercase', fontSize: '0.7rem' }}>Captain PIN</small>
-                                    <strong id="modal-captain-pin" style={{ fontSize: '2rem', color: 'var(--primary)', letterSpacing: '2px' }}>{leagueState.captainPin}</strong>
-                                </div>
-                            </div>
                         </div>
 
-                        <div style={{ background: 'rgba(255, 119, 119, 0.1)', padding: '1rem', borderRadius: '4px', border: '1px solid #ff7777', marginBottom: '2rem', fontSize: '0.9rem', color: '#ff7777' }}>
-                            ⚠️ <strong>IMPORTANT:</strong> You will need both the League Code and PIN to rejoin as Admin if you refresh or switch devices.
+                        <div style={{ background: 'rgba(52, 211, 153, 0.1)', padding: '1rem', borderRadius: '4px', border: '1px solid #34d399', marginBottom: '2rem', fontSize: '0.9rem', color: '#34d399' }}>
+                            💡 <strong>Invite Captains:</strong> You can invite captains directly using their Gmail address from the waiting room.
                         </div>
 
                         <button id="onboarding-close-btn" className="btn btn-primary" style={{ width: '100%', padding: '1rem' }} onClick={() => setShowSuccess(false)}>
-                            I HAVE SAVED THEM!
+                            Let's Go!
                         </button>
                     </div>
                 </div>

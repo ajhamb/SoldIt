@@ -8,7 +8,7 @@ export default defineConfig({
     workers: 1,
     reporter: 'html',
     use: {
-        baseURL: 'http://localhost:5173',
+        baseURL: 'http://localhost:3000',
         trace: 'on-first-retry',
         video: 'on',
     },

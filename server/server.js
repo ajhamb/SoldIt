@@ -1,11 +1,11 @@
+const path = require('path');
 const express = require('express');
-require('dotenv').config();
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 const http = require('http');
 const { Server } = require("socket.io");
 const cors = require('cors');
 const socketHandler = require('./socketHandler');
 const fs = require('fs');
-const path = require('path');
 
 const { createClient } = require('@supabase/supabase-js');
 

@@ -1,15 +1,26 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { supabase } from '../supabaseClient';
 
-export default function Welcome({ onJoin }) {
-    const [view, setView] = useState('MENU'); // MENU, CREATE, JOIN
+export default function Welcome({ onJoin, user, socket }) {
+    const [view, setView] = useState('MENU'); // MENU, CREATE, JOIN, SUPER_ADMIN
     const [showCsvHelp, setShowCsvHelp] = useState(false);
     const [showHowTo, setShowHowTo] = useState(false);
 
-    // User Identity
-    const [name, setName] = useState('');
-    const [code, setCode] = useState('');
-    const [pin, setPin] = useState('');
-    const [role, setRole] = useState('CAPTAIN'); // Used in JOIN view
+    // Dashboard Leagues State
+    const [adminLeagues, setAdminLeagues] = useState([]);
+    const [invitedLeagues, setInvitedLeagues] = useState([]);
+    const [loadingLeagues, setLoadingLeagues] = useState(false);
+
+    // League Join Code Entry (Direct Input)
+    const [joinCodeInput, setJoinCodeInput] = useState('');
+
+    // Modal to request Team Name when Captain enters league for first time
+    const [captainJoinModal, setCaptainJoinModal] = useState(null); // league object
+    const [newTeamName, setNewTeamName] = useState('');
+
+    // User Identity for offline mock / super admin joins
+    const [superAdminPassword, setSuperAdminPassword] = useState('');
+    const [mockEmailInput, setMockEmailInput] = useState('');
 
     // League Config (for CREATE mode)
     const [config, setConfig] = useState({
@@ -27,6 +38,52 @@ export default function Welcome({ onJoin }) {
         name: '',
         category: 'Batter'
     });
+
+    // Fetch dashboard data via Socket
+    const loadDashboardLeagues = () => {
+        if (!user) return;
+        setLoadingLeagues(true);
+        socket.emit('GET_MY_LEAGUES', { email: user.email.toLowerCase() });
+    };
+
+    useEffect(() => {
+        if (!user) return;
+
+        const handleMyLeagues = ({ adminLeagues, invitedLeagues }) => {
+            setAdminLeagues(adminLeagues);
+            setInvitedLeagues(invitedLeagues);
+            setLoadingLeagues(false);
+        };
+
+        socket.on('MY_LEAGUES', handleMyLeagues);
+        loadDashboardLeagues();
+
+        return () => {
+            socket.off('MY_LEAGUES', handleMyLeagues);
+        };
+    }, [user]);
+
+    // Google Login/Logout handlers
+    const handleGoogleLogin = async () => {
+        if (!supabase) return;
+        const { error } = await supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: {
+                redirectTo: window.location.origin
+            }
+        });
+        if (error) alert("Google Login Error: " + error.message);
+    };
+
+    const handleLogout = async () => {
+        localStorage.removeItem('e2e_mock_user');
+        localStorage.removeItem('auction_session');
+        if (supabase) {
+            const { error } = await supabase.auth.signOut();
+            if (error) alert("Logout Error: " + error.message);
+        }
+        window.location.reload();
+    };
 
     // CSV Parse
     const handleFileChange = (e) => {
@@ -64,7 +121,7 @@ export default function Welcome({ onJoin }) {
                     });
 
                     if (duplicatesFound) {
-                        alert("Some duplicate players were skipped during CSV upload.");
+                        alert("Note: Some players with duplicate names were automatically skipped.");
                     }
 
                     return {
@@ -78,14 +135,21 @@ export default function Welcome({ onJoin }) {
     };
 
     const addManualPlayer = () => {
-        if (!manualPlayer.name.trim()) return alert("Player Name is required");
-
+        if (!manualPlayer.name.trim()) return;
+        
         const isDuplicate = config.players.some(p => p.name.toLowerCase() === manualPlayer.name.trim().toLowerCase());
-        if (isDuplicate) return alert("Player name must be unique! This player already exists.");
+        if (isDuplicate) {
+            alert("A player with this name already exists in the league list.");
+            return;
+        }
 
         setConfig(prev => ({
             ...prev,
-            players: [...prev.players, { ...manualPlayer, name: manualPlayer.name.trim(), basePrice: config.basePrice, id: Date.now() }]
+            players: [...prev.players, {
+                name: manualPlayer.name.trim(),
+                category: manualPlayer.category,
+                basePrice: config.basePrice
+            }]
         }));
         setManualPlayer({ name: '', category: 'Batter' });
     };
@@ -99,60 +163,233 @@ export default function Welcome({ onJoin }) {
 
     // Actions
     const handleCreate = () => {
-        if (!name) return alert("Please enter your Admin Name");
+        const adminName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || "Admin";
         if (config.players.length === 0) return alert("Please add at least one player to the league!");
 
         const newCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-        // Create as Admin
-        onJoin(name, newCode, 'ADMIN', config);
+        onJoin(adminName, newCode, 'ADMIN', {
+            ...config,
+            adminEmail: user?.email?.toLowerCase()
+        });
     };
 
-    const handleJoin = () => {
-        if (role === 'SUPER_ADMIN') {
-            if (!pin) return alert("Super Admin Password is required");
-            onJoin('admin', '', 'SUPER_ADMIN', { password: pin });
-            return;
+    // Handles the entry of an admin into their own league
+    const handleAdminEnter = (league) => {
+        const adminName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || "Admin";
+        onJoin(adminName, league.code, 'ADMIN');
+    };
+
+    // Handles the entry of a captain into an invited league
+    const handleCaptainEnter = (league) => {
+        const myTeam = league.teams?.find(t => t.email?.toLowerCase() === user.email.toLowerCase());
+        if (myTeam) {
+            onJoin(myTeam.name, league.code, 'CAPTAIN', { email: user.email });
+        } else {
+            setCaptainJoinModal(league);
+            setNewTeamName('');
         }
-
-        if (!name || !code) return alert("Please enter Name and League Code");
-        if (role === 'ADMIN' && !pin) return alert("Admin PIN is required to rejoin as Admin");
-        if (role === 'CAPTAIN' && !pin) return alert("Captain PIN is required to join/rejoin as Captain");
-
-        onJoin(name, code, role, role === 'ADMIN' ? { adminPin: pin } : { captainPin: pin });
     };
 
-    // Render Helpers
+    const handleConfirmCaptainJoin = () => {
+        if (!newTeamName.trim()) return alert("Please enter your Team Name");
+        if (!captainJoinModal) return;
+
+        const isTaken = captainJoinModal.teams?.some(t => t.name.toLowerCase() === newTeamName.trim().toLowerCase());
+        if (isTaken) return alert(`Team Name "${newTeamName}" is already taken!`);
+
+        onJoin(newTeamName.trim(), captainJoinModal.code, 'CAPTAIN', { email: user.email });
+        setCaptainJoinModal(null);
+    };
+
+    // Allows Captains to join a league by entering the code
+    const handleJoinByCode = (e) => {
+        e.preventDefault();
+        if (!joinCodeInput.trim()) return;
+        const code = joinCodeInput.trim().toUpperCase();
+
+        setLoadingLeagues(true);
+        socket.emit('CHECK_INVITATION', { leagueCode: code, email: user.email.toLowerCase() }, (response) => {
+            setLoadingLeagues(false);
+            if (response.error) {
+                alert(response.error);
+            } else {
+                handleCaptainEnter(response.league);
+            }
+        });
+    };
+
+    // Mock sign-in handler for E2E and offline testing
+    const handleMockLogin = (e) => {
+        e.preventDefault();
+        if (!mockEmailInput.trim()) return alert("Email is required");
+        const email = mockEmailInput.trim().toLowerCase();
+        const mockUser = {
+            email,
+            user_metadata: {
+                full_name: email.split('@')[0]
+            }
+        };
+        localStorage.setItem('e2e_mock_user', JSON.stringify(mockUser));
+        window.location.reload();
+    };
+
+    const handleSuperAdminLogin = (e) => {
+        e.preventDefault();
+        if (!superAdminPassword.trim()) return alert("Super Admin Password is required");
+        onJoin('admin', '', 'SUPER_ADMIN', { password: superAdminPassword });
+    };
+
     const inputStyle = {
         width: '100%', padding: '0.8rem', marginBottom: '1rem',
         borderRadius: '4px', background: 'rgba(0,0,0,0.3)', border: '1px solid #444', color: '#fff'
     };
 
-    return (
-        <div className="container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', textAlign: 'center', padding: '2rem' }}>
-            <h1 style={{ fontSize: '4rem', color: 'var(--primary)', marginBottom: '1rem', textShadow: '0 0 20px rgba(255, 215, 0, 0.5)' }}>SoldIt</h1>
-            <p className="text-muted" style={{ marginBottom: '3rem', fontSize: '1.2rem' }}>Real-time IPL Style Auction</p>
+    // --- GATEKEEPER VIEW: Login Enforced ---
+    if (!user) {
+        return (
+            <div className="container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', textAlign: 'center', padding: '2rem' }}>
+                <h1 style={{ fontSize: '4.5rem', color: 'var(--primary)', marginBottom: '1rem', textShadow: '0 0 25px rgba(255, 215, 0, 0.4)' }}>SoldIt</h1>
+                <p className="text-muted" style={{ marginBottom: '3rem', fontSize: '1.25rem' }}>Real-time IPL Style Draft & Auction</p>
+                
+                <div className="card" style={{ maxWidth: '400px', width: '100%', padding: '2.5rem', textAlign: 'center' }}>
+                    <h2 style={{ marginBottom: '1.5rem', fontSize: '1.5rem' }}>Welcome to SoldIt</h2>
+                    
+                    {supabase ? (
+                        <>
+                            <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '2rem' }}>Sign in with Google to access your leagues, manage drafts, and bid in real-time.</p>
+                            <button className="btn" style={{ width: '100%', background: '#fff', color: '#000', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.8rem', border: 'none', padding: '1rem', borderRadius: '30px', cursor: 'pointer', fontSize: '1.05rem', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }} onClick={handleGoogleLogin}>
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05"/>
+                                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335"/>
+                                </svg>
+                                Sign in with Google
+                            </button>
+                        </>
+                    ) : (
+                        <form onSubmit={handleMockLogin}>
+                            <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '1.5rem' }}>Offline Mode: Enter your email to simulate authenticating and access the dashboard.</p>
+                            <input 
+                                id="offline-email-input"
+                                type="email" 
+                                value={mockEmailInput} 
+                                onChange={e => setMockEmailInput(e.target.value)} 
+                                placeholder="e.g. admin@example.com" 
+                                style={inputStyle} 
+                                required 
+                            />
+                            <button id="offline-signin-btn" className="btn btn-primary" type="submit" style={{ width: '100%', padding: '0.8rem', borderRadius: '30px' }}>
+                                Sign In (Offline Dev Mode)
+                            </button>
+                        </form>
+                    )}
+                </div>
+            </div>
+        );
+    }
 
-            {/* --- MENU VIEW --- */}
+    return (
+        <div className="container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', textAlign: 'center', padding: '2rem', position: 'relative' }}>
+            {/* --- USER WIDGET (TOP RIGHT) --- */}
+            {user && (
+                <div style={{ position: 'fixed', top: '1.5rem', right: '1.5rem', display: 'flex', gap: '1rem', alignItems: 'center', zIndex: 1000 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', background: 'rgba(0,0,0,0.6)', padding: '0.5rem 1rem', borderRadius: '30px', border: '1px solid #444', backdropFilter: 'blur(4px)' }}>
+                        {user.user_metadata?.avatar_url && (
+                            <img src={user.user_metadata.avatar_url} alt="User avatar" style={{ width: '24px', height: '24px', borderRadius: '50%' }} />
+                        )}
+                        <span style={{ fontSize: '0.85rem', color: '#ccc' }}>{user.email}</span>
+                        <button id="signout-btn" className="btn-secondary" style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', border: 'none', background: '#ef4444', borderRadius: '4px', cursor: 'pointer', color: '#fff', fontWeight: 'bold' }} onClick={handleLogout}>
+                            Sign Out
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            <h1 style={{ fontSize: '3.5rem', color: 'var(--primary)', marginBottom: '0.5rem', textShadow: '0 0 20px rgba(255, 215, 0, 0.3)' }}>SoldIt</h1>
+            <p className="text-muted" style={{ marginBottom: '2rem', fontSize: '1.1rem' }}>Real-time IPL Style Auction</p>
+
+            {/* --- DASHBOARD VIEW (when logged in) --- */}
             {view === 'MENU' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                <div style={{ width: '100%', maxWidth: '800px', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                    
+                    {/* Action buttons */}
+                    <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
                         <button id="create-league-btn" className="btn btn-primary" onClick={() => setView('CREATE')}>
                             Create New League
                         </button>
-                        <button id="join-league-btn" className="btn" style={{ background: 'transparent', border: '2px solid var(--secondary)', color: 'var(--secondary)' }} onClick={() => { setView('JOIN'); setRole('CAPTAIN'); setName(''); }}>
-                            Join Existing League
+                        <form onSubmit={handleJoinByCode} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                            <input 
+                                id="join-league-code-input"
+                                type="text" 
+                                placeholder="Enter League Code" 
+                                value={joinCodeInput} 
+                                onChange={e => setJoinCodeInput(e.target.value)} 
+                                style={{ ...inputStyle, marginBottom: 0, width: '160px', padding: '0.6rem' }} 
+                            />
+                            <button id="join-by-code-btn" className="btn" type="submit" style={{ padding: '0.6rem 1rem', background: 'transparent', border: '2px solid var(--secondary)', color: 'var(--secondary)' }}>Join</button>
+                        </form>
+                        <button className="btn" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid #444', color: '#888' }} onClick={() => setShowHowTo(true)}>
+                            How To Play?
                         </button>
-                        <button id="super-admin-menu-btn" className="btn" style={{ background: 'transparent', border: '2px solid #8b5cf6', color: '#a78bfa' }} onClick={() => { setView('SUPER_ADMIN'); setRole('SUPER_ADMIN'); setName('admin'); }}>
+                        <button id="super-admin-menu-btn" className="btn" style={{ background: 'transparent', border: '2px solid #8b5cf6', color: '#a78bfa' }} onClick={() => { setView('SUPER_ADMIN'); }}>
                             Super Admin
                         </button>
                     </div>
-                    <button
-                        className="btn"
-                        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid #444', color: '#888', fontSize: '0.9rem', padding: '0.6rem 2rem' }}
-                        onClick={() => setShowHowTo(true)}
-                    >
-                        How To Play?
-                    </button>
+
+                    {loadingLeagues ? (
+                        <div style={{ color: 'var(--primary)', fontSize: '1.2rem', padding: '2rem' }}>Loading dashboard leagues...</div>
+                    ) : (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+                            {/* Managed leagues (Admin) */}
+                            <div className="card" style={{ textAlign: 'left', background: 'rgba(0,0,0,0.15)', borderColor: '#333' }}>
+                                <h3 style={{ borderBottom: '1px solid #333', paddingBottom: '0.5rem', color: 'var(--primary)', marginBottom: '1rem' }}>Leagues You Manage</h3>
+                                {adminLeagues.length === 0 ? (
+                                    <p className="text-muted" style={{ fontSize: '0.9rem' }}>You haven't created any leagues yet.</p>
+                                ) : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '350px', overflowY: 'auto' }}>
+                                        {adminLeagues.map(l => (
+                                            <div key={l.code} className="league-card" style={{ padding: '0.8rem', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', border: '1px solid #222', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <div>
+                                                    <strong style={{ color: '#fff' }}>{l.name}</strong>
+                                                    <div style={{ fontSize: '0.8rem', color: '#888' }}>Code: <span style={{ color: 'var(--secondary)' }}>{l.code}</span> | Teams: {l.teams?.length || 0}/{l.config?.teamCount || 0}</div>
+                                                </div>
+                                                <button className="btn btn-primary enter-league-btn" onClick={() => handleAdminEnter(l)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>Enter</button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Invited leagues (Captain) */}
+                            <div className="card" style={{ textAlign: 'left', background: 'rgba(0,0,0,0.15)', borderColor: '#333' }}>
+                                <h3 style={{ borderBottom: '1px solid #333', paddingBottom: '0.5rem', color: 'var(--secondary)', marginBottom: '1rem' }}>Leagues You Participate In</h3>
+                                {invitedLeagues.length === 0 ? (
+                                    <p className="text-muted" style={{ fontSize: '0.9rem' }}>You haven't been invited to any leagues yet.</p>
+                                ) : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '350px', overflowY: 'auto' }}>
+                                        {invitedLeagues.map(l => {
+                                            const myTeam = l.teams?.find(t => t.email?.toLowerCase() === user.email.toLowerCase());
+                                            return (
+                                                <div key={l.code} className="league-card" style={{ padding: '0.8rem', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', border: '1px solid #222', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <div>
+                                                        <strong style={{ color: '#fff' }}>{l.name}</strong>
+                                                        <div style={{ fontSize: '0.8rem', color: '#888' }}>
+                                                            Code: <span style={{ color: 'var(--secondary)' }}>{l.code}</span>
+                                                            {myTeam && <span style={{ color: '#34d399' }}> | Team: {myTeam.name}</span>}
+                                                        </div>
+                                                    </div>
+                                                    <button className="btn enter-league-btn" onClick={() => handleCaptainEnter(l)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', background: 'transparent', border: '2px solid var(--secondary)', color: 'var(--secondary)' }}>
+                                                        {myTeam ? 'Rejoin' : 'Join Draft'}
+                                                    </button>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -162,20 +399,7 @@ export default function Welcome({ onJoin }) {
                     <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1.5rem', position: 'relative' }}>
                         <button 
                             onClick={() => setView('MENU')} 
-                            style={{ 
-                                position: 'absolute', 
-                                left: 0, 
-                                background: 'transparent', 
-                                border: 'none', 
-                                color: 'var(--text-muted)', 
-                                fontSize: '1.2rem',
-                                padding: '0.2rem',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.3rem',
-                                cursor: 'pointer',
-                                transition: 'color 0.2s'
-                            }}
+                            style={{ position: 'absolute', left: 0, background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', padding: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer', transition: 'color 0.2s' }}
                             onMouseEnter={(e) => e.target.style.color = 'var(--primary)'}
                             onMouseLeave={(e) => e.target.style.color = 'var(--text-muted)'}
                         >
@@ -184,19 +408,14 @@ export default function Welcome({ onJoin }) {
                         <h2 style={{ width: '100%', margin: 0, textAlign: 'center' }}>Create League</h2>
                     </div>
 
-                    <div>
-                        <label style={{ display: 'block', marginBottom: '0.5rem' }}>Your Admin Name</label>
-                        <input id="admin-name-input" type="text" value={name} onChange={e => setName(e.target.value)} style={inputStyle} placeholder="e.g. Commissioner" />
-                    </div>
-
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                         <div>
                             <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem' }}>League Name</label>
-                            <input type="text" value={config.leagueName} onChange={e => setConfig({ ...config, leagueName: e.target.value })} style={inputStyle} />
+                            <input id="league-name-input" type="text" value={config.leagueName} onChange={e => setConfig({ ...config, leagueName: e.target.value })} style={inputStyle} />
                         </div>
                         <div>
                             <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem' }}>Teams Count</label>
-                            <input type="number" value={config.teamCount} onChange={e => setConfig({ ...config, teamCount: e.target.value })} style={inputStyle} />
+                            <input id="league-teams-input" type="number" value={config.teamCount} onChange={e => setConfig({ ...config, teamCount: e.target.value })} style={inputStyle} />
                         </div>
                         <div>
                             <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem' }}>Squad Size (EXCLUDING CAPTAIN)</label>
@@ -216,12 +435,21 @@ export default function Welcome({ onJoin }) {
                         </div>
                     </div>
 
+                    <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                        <div style={{ flex: 1 }}>
+                            <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem' }}>Upload Players CSV</label>
+                            <input type="file" accept=".csv" onChange={handleFileChange} style={{ ...inputStyle, padding: '0.5rem' }} />
+                        </div>
+                        <button className="btn" style={{ padding: '0.8rem', marginTop: '1.2rem', background: '#333', border: '1px solid #555' }} onClick={() => setShowCsvHelp(true)}>Help</button>
+                    </div>
+
                     <div style={{ marginTop: '1.5rem', borderTop: '1px solid #333', paddingTop: '1.5rem' }}>
                         <h4 style={{ marginBottom: '1rem', color: 'var(--primary)' }}>Manual Player Entry</h4>
                         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr auto', gap: '0.5rem', alignItems: 'end' }}>
                             <div>
                                 <label style={{ fontSize: '0.8rem', display: 'block' }}>Name</label>
                                 <input
+                                    id="manual-player-name"
                                     type="text"
                                     value={manualPlayer.name}
                                     onChange={e => setManualPlayer({ ...manualPlayer, name: e.target.value })}
@@ -242,142 +470,25 @@ export default function Welcome({ onJoin }) {
                                     <option value="All-Rounder">All-Rounder</option>
                                 </select>
                             </div>
-                            <button className="btn btn-primary" onClick={addManualPlayer} style={{ padding: '0.8rem' }}>ADD</button>
+                            <button id="add-player-btn" className="btn btn-primary" onClick={addManualPlayer} style={{ padding: '0.8rem' }}>ADD</button>
                         </div>
-                        <p style={{ fontSize: '0.75rem', color: '#666', marginTop: '0.5rem' }}>
-                            * All players will use the League Base Price: <strong>{config.basePrice} Th</strong>
-                        </p>
                     </div>
 
-                    <div style={{ marginTop: '1.5rem' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                            <label style={{ display: 'block', fontSize: '0.9rem', margin: 0 }}>Upload Players (CSV)</label>
-                            <button
-                                onClick={() => setShowCsvHelp(true)}
-                                style={{
-                                    background: '#444',
-                                    color: 'var(--primary)',
-                                    borderRadius: '50%',
-                                    width: '20px',
-                                    height: '20px',
-                                    fontSize: '0.8rem',
-                                    fontWeight: 'bold',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    border: '1px solid var(--primary)',
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                ?
-                            </button>
-                        </div>
-                        <input type="file" accept=".csv" onChange={handleFileChange} style={{ ...inputStyle, padding: '0.5rem' }} />
-                    </div>
-
-                    {/* Added Players List */}
                     {config.players.length > 0 && (
-                        <div style={{ marginTop: '1rem', maxHeight: '200px', overflowY: 'auto', background: 'rgba(0,0,0,0.2)', padding: '0.5rem', borderRadius: '4px' }}>
-                            <div style={{ fontSize: '0.8rem', color: '#888', marginBottom: '0.5rem', borderBottom: '1px solid #333' }}>
-                                Players Added ({config.players.length})
+                        <div style={{ marginTop: '1.5rem' }}>
+                            <h4 style={{ marginBottom: '0.5rem' }}>Added Players ({config.players.length})</h4>
+                            <div style={{ maxHeight: '150px', overflowY: 'auto', border: '1px solid #333', borderRadius: '4px', background: '#111' }}>
+                                {config.players.map((p, index) => (
+                                    <div key={index} style={{ padding: '0.5rem', borderBottom: '1px solid #222', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span>{p.name} <small style={{ color: '#888' }}>({p.category})</small></span>
+                                        <button className="btn btn-secondary" onClick={() => removePlayer(index)} style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem' }}>Delete</button>
+                                    </div>
+                                ))}
                             </div>
-                            {config.players.map((p, idx) => (
-                                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', padding: '0.3rem 0', borderBottom: '1px solid #222' }}>
-                                    <span>{p.name} <small style={{ color: '#666' }}>({p.category})</small> - <strong>{p.basePrice}</strong></span>
-                                    <button
-                                        onClick={() => removePlayer(idx)}
-                                        style={{ background: 'transparent', color: '#ff5555', border: 'none', cursor: 'pointer', padding: '0 0.5rem' }}
-                                    >
-                                        ×
-                                    </button>
-                                </div>
-                            ))}
                         </div>
                     )}
 
-                    <div style={{ marginTop: '2rem' }}>
-                        <button id="start-league-final-btn" className="btn btn-primary" style={{ width: '100%' }} onClick={handleCreate}>Start League</button>
-                    </div>
-                </div>
-            )}
-
-            {/* --- JOIN VIEW --- */}
-            {view === 'JOIN' && (
-                <div className="card" style={{ width: '400px', textAlign: 'left' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1.5rem', position: 'relative' }}>
-                        <button 
-                            onClick={() => setView('MENU')} 
-                            style={{ 
-                                position: 'absolute', 
-                                left: 0, 
-                                background: 'transparent', 
-                                border: 'none', 
-                                color: 'var(--text-muted)', 
-                                fontSize: '1.2rem',
-                                padding: '0.2rem',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.3rem',
-                                cursor: 'pointer',
-                                transition: 'color 0.2s'
-                            }}
-                            onMouseEnter={(e) => e.target.style.color = 'var(--primary)'}
-                            onMouseLeave={(e) => e.target.style.color = 'var(--text-muted)'}
-                        >
-                            ←
-                        </button>
-                        <h2 style={{ width: '100%', margin: 0, textAlign: 'center' }}>Join League</h2>
-                    </div>
-
-                    <div>
-                        <label style={{ display: 'block', marginBottom: '0.5rem' }}>League Code</label>
-                        <input id="join-league-code-input" type="text" value={code} onChange={e => setCode(e.target.value)} style={inputStyle} placeholder="e.g. ABCD-1234" />
-                    </div>
-
-                    <div>
-                        <label style={{ display: 'block', marginBottom: '0.5rem' }}>{role === 'ADMIN' ? 'League Name' : 'Team Name'}</label>
-                        <input id="join-name-input" type="text" value={name} onChange={e => setName(e.target.value)} style={inputStyle} placeholder={role === 'ADMIN' ? "e.g. Premier League" : "e.g. Royal Challengers"} />
-                    </div>
-
-                    <div style={{ marginBottom: '1rem' }}>
-                        <label style={{ display: 'block', marginBottom: '0.5rem' }}>I am a...</label>
-                        <div style={{ display: 'flex', gap: '1rem' }}>
-                            <button
-                                id="role-captain-btn"
-                                className={`btn ${role === 'CAPTAIN' ? 'btn-primary' : ''}`}
-                                style={{ flex: 1, border: '1px solid #555' }}
-                                onClick={() => { setRole('CAPTAIN'); setName(''); }}
-                            >
-                                Captain
-                            </button>
-                            <button
-                                id="role-admin-btn"
-                                className={`btn ${role === 'ADMIN' ? 'btn-primary' : ''}`}
-                                style={{ flex: 1, border: '1px solid #555' }}
-                                onClick={() => { setRole('ADMIN'); setName(''); }}
-                            >
-                                Admin
-                            </button>
-                        </div>
-                    </div>
-
-                    {role === 'ADMIN' && (
-                        <div>
-                            <label style={{ display: 'block', marginBottom: '0.5rem', color: '#fca5a5' }}>Admin PIN</label>
-                            <input id="admin-pin-input" type="password" value={pin} onChange={e => setPin(e.target.value)} style={{ ...inputStyle, borderColor: '#fca5a5' }} placeholder="******" />
-                        </div>
-                    )}
-
-                    {role === 'CAPTAIN' && (
-                        <div>
-                            <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--primary)' }}>Captain PIN</label>
-                            <input id="captain-pin-input" type="password" value={pin} onChange={e => setPin(e.target.value)} style={{ ...inputStyle, borderColor: 'var(--primary)' }} placeholder="******" />
-                        </div>
-                    )}
-
-                    <div style={{ marginTop: '2rem' }}>
-                        <button id="enter-room-btn" className="btn btn-primary" style={{ width: '100%' }} onClick={handleJoin}>Enter Room</button>
-                    </div>
+                    <button id="start-league-final-btn" className="btn btn-primary" style={{ width: '100%', marginTop: '2rem', padding: '1rem', fontSize: '1.1rem' }} onClick={handleCreate}>Create League</button>
                 </div>
             )}
 
@@ -386,21 +497,8 @@ export default function Welcome({ onJoin }) {
                 <div className="card" style={{ width: '400px', textAlign: 'left' }}>
                     <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1.5rem', position: 'relative' }}>
                         <button 
-                            onClick={() => { setView('MENU'); setRole('CAPTAIN'); setName(''); }} 
-                            style={{ 
-                                position: 'absolute', 
-                                left: 0, 
-                                background: 'transparent', 
-                                border: 'none', 
-                                color: 'var(--text-muted)', 
-                                fontSize: '1.2rem',
-                                padding: '0.2rem',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.3rem',
-                                cursor: 'pointer',
-                                transition: 'color 0.2s'
-                            }}
+                            onClick={() => { setView('MENU'); }} 
+                            style={{ position: 'absolute', left: 0, background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', padding: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer', transition: 'color 0.2s' }}
                             onMouseEnter={(e) => e.target.style.color = 'var(--primary)'}
                             onMouseLeave={(e) => e.target.style.color = 'var(--text-muted)'}
                         >
@@ -411,47 +509,53 @@ export default function Welcome({ onJoin }) {
 
                     <div>
                         <label style={{ display: 'block', marginBottom: '0.5rem' }}>Username</label>
-                        <input 
-                            id="super-admin-name-input" 
-                            type="text" 
-                            value={name} 
-                            disabled 
-                            style={inputStyle} 
-                        />
+                        <input id="super-admin-name-input" type="text" value="admin" disabled style={inputStyle} />
                     </div>
 
                     <div>
                         <label style={{ display: 'block', marginBottom: '0.5rem', color: '#a78bfa' }}>Super Admin Password</label>
-                        <input 
-                            id="super-admin-password-input" 
-                            type="password" 
-                            value={pin} 
-                            onChange={e => setPin(e.target.value)} 
-                            style={{ ...inputStyle, borderColor: '#8b5cf6' }} 
-                            placeholder="******" 
-                        />
+                        <input id="super-admin-password-input" type="password" value={superAdminPassword} onChange={e => setMockEmailInput(e.target.value) /* reuse state for ease */ || setSuperAdminPassword(e.target.value)} style={{ ...inputStyle, borderColor: '#8b5cf6' }} placeholder="******" />
                     </div>
 
                     <div style={{ marginTop: '2rem' }}>
-                        <button id="enter-room-btn" className="btn btn-primary" style={{ width: '100%', background: '#8b5cf6', borderColor: '#8b5cf6' }} onClick={handleJoin}>Enter Dashboard</button>
+                        <button id="enter-room-btn" className="btn btn-primary" style={{ width: '100%', background: '#8b5cf6', borderColor: '#8b5cf6' }} onClick={handleSuperAdminLogin}>Enter Dashboard</button>
+                    </div>
+                </div>
+            )}
+
+            {/* --- CAPTAIN JOIN DETAIL DIALOG (First time entering team name) --- */}
+            {captainJoinModal && (
+                <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: '1rem' }}>
+                    <div className="card" style={{ maxWidth: '400px', width: '100%', textAlign: 'left', position: 'relative' }}>
+                        <button onClick={() => setCaptainJoinModal(null)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'transparent', color: '#888', fontSize: '1.5rem', border: 'none', cursor: 'pointer' }}>×</button>
+                        <h3 style={{ color: 'var(--secondary)', marginBottom: '0.5rem' }}>Join League: {captainJoinModal.name}</h3>
+                        <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '1.5rem' }}>Enter a unique Team Name for your squad in this league.</p>
+                        
+                        <div>
+                            <label style={{ display: 'block', marginBottom: '0.5rem' }}>Your Team Name</label>
+                            <input 
+                                id="captain-team-name-input"
+                                type="text" 
+                                placeholder="e.g. Royal Challengers" 
+                                value={newTeamName} 
+                                onChange={e => setNewTeamName(e.target.value)} 
+                                style={inputStyle} 
+                                required
+                            />
+                        </div>
+
+                        <button id="confirm-join-btn" className="btn" style={{ width: '100%', marginTop: '1rem', background: 'var(--secondary)', color: '#000', fontWeight: 'bold' }} onClick={handleConfirmCaptainJoin}>
+                            Join League Draft
+                        </button>
                     </div>
                 </div>
             )}
 
             {/* --- CSV HELP MODAL --- */}
             {showCsvHelp && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
-                    background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    zIndex: 1000, padding: '1rem'
-                }}>
+                <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2500, padding: '1rem' }}>
                     <div className="card" style={{ maxWidth: '500px', width: '100%', textAlign: 'left', position: 'relative' }}>
-                        <button
-                            onClick={() => setShowCsvHelp(false)}
-                            style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'transparent', color: '#888', fontSize: '1.5rem' }}
-                        >
-                            ×
-                        </button>
+                        <button onClick={() => setShowCsvHelp(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'transparent', color: '#888', fontSize: '1.5rem', border: 'none', cursor: 'pointer' }}>×</button>
                         <h3 style={{ color: 'var(--primary)', marginBottom: '1rem' }}>CSV Format Guide</h3>
                         <p style={{ fontSize: '0.9rem', marginBottom: '1rem', color: '#ccc' }}>
                             Upload a <code>.csv</code> file with player details. Each line should follow this format:
@@ -466,58 +570,34 @@ export default function Welcome({ onJoin }) {
                                 {`Virat Kohli,Batter\nJasprit Bumrah,Bowler\nBen Stokes,All-Rounder\nMS Dhoni,WK\nRashid Khan,Bowler`}
                             </pre>
                         </div>
-                        <p style={{ fontSize: '0.8rem', color: '#777' }}>
-                            * All players will automatically inherit the League Base Price ({config.basePrice} Th).
-                        </p>
-                        <button className="btn btn-primary" style={{ width: '100%', marginTop: '1.5rem' }} onClick={() => setShowCsvHelp(false)}>
-                            Got it!
-                        </button>
+                        <button className="btn btn-primary" style={{ width: '100%', marginTop: '1.5rem' }} onClick={() => setShowCsvHelp(false)}>Got it!</button>
                     </div>
                 </div>
             )}
 
             {/* --- HOW TO PLAY MODAL --- */}
             {showHowTo && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
-                    background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    zIndex: 2000, padding: '1rem'
-                }}>
+                <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: '1rem' }}>
                     <div className="card neon-border" style={{ maxWidth: '600px', width: '100%', textAlign: 'left', position: 'relative', maxHeight: '90vh', overflowY: 'auto', padding: '2rem' }}>
-                        <button
-                            onClick={() => setShowHowTo(false)}
-                            style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'transparent', color: '#888', fontSize: '1.5rem', border: 'none', cursor: 'pointer' }}
-                        >
-                            ×
-                        </button>
+                        <button onClick={() => setShowHowTo(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'transparent', color: '#888', fontSize: '1.5rem', border: 'none', cursor: 'pointer' }}>×</button>
                         <h2 style={{ color: 'var(--primary)', marginBottom: '1.5rem', textAlign: 'center' }}>How to use SoldIt</h2>
-
                         <div style={{ marginBottom: '2rem' }}>
                             <h3 style={{ color: 'var(--secondary)', marginBottom: '0.8rem', fontSize: '1.2rem', borderBottom: '1px solid #333', paddingBottom: '0.5rem' }}>🏆 For League Admins (Creators)</h3>
-                            <ol style={{ paddingLeft: '1.2rem', color: '#ccc', lineHeight: '1.6' }}>
-                                <li>Click <strong>Create New League</strong> and enter your name.</li>
-                                <li>Configure settings: Team Count, Budget, and Squad Size.</li>
-                                <li>Add players manually or upload a <strong>CSV file</strong> (see CSV help).</li>
-                                <li>Click <strong>Start League</strong> to enter the room.</li>
-                                <li style={{ color: '#fca5a5' }}><strong>CRITICAL:</strong> Save the <strong>League Code</strong> and <strong>Admin PIN</strong>. You'll need them if you refresh!</li>
-                                <li>Share the <strong>League Code</strong> and <strong>Captain PIN</strong> with your captains.</li>
+                            <ol style={{ paddingLeft: '1.2rem', color: '#ccc', lineHeight: '1.6', fontSize: '0.9rem' }}>
+                                <li>Click <strong>Create New League</strong>.</li>
+                                <li>Configure settings and upload player pool.</li>
+                                <li>From your waiting room, invite Captains by entering their Gmail accounts.</li>
+                                <li>Click <strong>Start League</strong> once all Captains join.</li>
                             </ol>
                         </div>
-
-                        <div style={{ marginBottom: '2rem' }}>
-                            <h3 style={{ color: 'var(--secondary)', marginBottom: '0.8rem', fontSize: '1.2rem', borderBottom: '1px solid #333', paddingBottom: '0.5rem' }}>🏏 For Team Captains</h3>
-                            <ol style={{ paddingLeft: '1.2rem', color: '#ccc', lineHeight: '1.6' }}>
-                                <li>Click <strong>Join Existing League</strong>.</li>
-                                <li>Enter the <strong>League Code</strong> provided by your Admin.</li>
-                                <li>Enter your <strong>Team Name</strong>.</li>
-                                <li>Select <strong>Captain</strong> role and enter the <strong>Captain PIN</strong> provided by your Admin.</li>
-                                <li>Click <strong>Enter Room</strong> and wait for the Admin to start the auction.</li>
+                        <div style={{ marginBottom: '1rem' }}>
+                            <h3 style={{ color: 'var(--primary)', marginBottom: '0.8rem', fontSize: '1.2rem', borderBottom: '1px solid #333', paddingBottom: '0.5rem' }}>⚡ For Captains</h3>
+                            <ol style={{ paddingLeft: '1.2rem', color: '#ccc', lineHeight: '1.6', fontSize: '0.9rem' }}>
+                                <li>Log in via Google.</li>
+                                <li>Your dashboard shows leagues you are invited to. Alternatively, enter a League Code in the join box.</li>
+                                <li>Enter your team name and enter the draft room!</li>
                             </ol>
                         </div>
-
-                        <button className="btn btn-primary" style={{ width: '100%', marginTop: '1rem' }} onClick={() => setShowHowTo(false)}>
-                            Got it, Let's Go!
-                        </button>
                     </div>
                 </div>
             )}

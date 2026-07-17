@@ -29,15 +29,23 @@ test.describe('SoldIt Complex E2E Auction Flow', () => {
         });
         const adminPage = await adminContext.newPage();
 
+        // Navigate first to set origin, then inject mock Admin user and reload
+        await adminPage.goto('/');
+        await adminPage.evaluate(() => {
+            localStorage.setItem('e2e_mock_user', JSON.stringify({
+                email: 'admin@test.com',
+                user_metadata: { full_name: 'League Admin' }
+            }));
+        });
         await adminPage.goto('/');
         console.log('Admin: Landing page loaded');
 
         // Create League
         await adminPage.click('#create-league-btn');
-        await adminPage.fill('#admin-name-input', 'League Admin');
+        await adminPage.fill('#league-name-input', 'Test League');
 
         // Configure settings
-        await adminPage.fill('label:has-text("Teams Count") + input', '4');
+        await adminPage.fill('#league-teams-input', '4');
         await adminPage.fill('label:has-text("Squad Size") + input', '5'); // Max 5 spots
         await adminPage.fill('label:has-text("Budget") + input', '1000');
         await adminPage.fill('label:has-text("Base Price") + input', '50');
@@ -54,10 +62,24 @@ test.describe('SoldIt Complex E2E Auction Flow', () => {
         await expect(onboardingHeading).toBeVisible({ timeout: 25000 });
 
         const leagueCode = await adminPage.locator('#modal-league-code').textContent().then(t => t?.trim() || '');
-        const captainPin = await adminPage.locator('#modal-captain-pin').textContent().then(t => t?.trim() || '');
-        console.log(`Admin: League Code = ${leagueCode}, Captain PIN = ${captainPin}`);
+        console.log(`Admin: League Code = ${leagueCode}`);
 
         await adminPage.click('#onboarding-close-btn');
+
+        // Invite Captains
+        const captainEmails = [
+            'captain1@test.com',
+            'captain2@test.com',
+            'captain3@test.com',
+            'captain4@test.com'
+        ];
+
+        for (const email of captainEmails) {
+            await adminPage.fill('input[placeholder="captain@example.com"]', email);
+            await adminPage.click('button:has-text("Invite")');
+            await expect(adminPage.locator('div').filter({ hasText: email }).first()).toBeVisible({ timeout: 10000 });
+        }
+        console.log('Admin: Invited all 4 captains');
 
         // 2. CAPTAINS JOIN
         const captainNames = ['Captain One', 'Captain Two', 'Captain Three', 'Captain Four'];
@@ -71,14 +93,25 @@ test.describe('SoldIt Complex E2E Auction Flow', () => {
                 }
             });
             const page = await ctx.newPage();
+
+            const email = captainEmails[i];
+            await page.goto('/');
+            await page.evaluate((userEmail) => {
+                localStorage.setItem('e2e_mock_user', JSON.stringify({
+                    email: userEmail,
+                    user_metadata: { full_name: userEmail.split('@')[0] }
+                }));
+            }, email);
             await page.goto('/');
 
-            await page.click('#join-league-btn');
-            await page.fill('#join-league-code-input', leagueCode);
-            await page.fill('#join-name-input', captainNames[i]);
-            await page.click('#role-captain-btn');
-            await page.fill('#captain-pin-input', captainPin);
-            await page.click('#enter-room-btn');
+            // Verify invited league card shows up
+            const leagueCard = page.locator('.league-card', { hasText: leagueCode });
+            await expect(leagueCard).toBeVisible({ timeout: 20000 });
+
+            // Join League
+            await leagueCard.locator('button:has-text("Join Draft")').click();
+            await page.fill('#captain-team-name-input', captainNames[i]);
+            await page.click('#confirm-join-btn');
 
             captainPages.push(page);
             captainContexts.push(ctx);

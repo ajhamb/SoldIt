@@ -24,11 +24,9 @@ module.exports = (io, socket, data, supabase) => {
         let league = data.leagues.get(leagueCode);
 
         if (role === 'ADMIN') {
-            // If settings.players exists, it means the user is trying to CREATE a new league
             const isCreating = settings && settings.players && settings.players.length > 0;
 
             if (isCreating && league) {
-                // Collision! This code is already in use.
                 return socket.emit('ERROR', {
                     message: `League Code ${leagueCode} is already in use. Please try again (your browser should generate a new code).`
                 });
@@ -39,11 +37,9 @@ module.exports = (io, socket, data, supabase) => {
                     socket.emit('ERROR', { message: "League not found" });
                     return;
                 }
-                // Validate settings or use defaults
                 const config = settings || {};
                 const basePrice = parseInt(config.basePrice) || 50;
 
-                // Process players from CSV/Input or use Mock
                 let initialPlayers = [];
                 if (config.players && config.players.length > 0) {
                     initialPlayers = config.players.map((p, i) => ({
@@ -59,40 +55,41 @@ module.exports = (io, socket, data, supabase) => {
                 }
 
                 // Create new league
+                const adminEmail = config.adminEmail?.trim().toLowerCase() || null;
                 league = {
                     code: leagueCode,
                     name: config.leagueName || "Premier League",
                     adminId: socket.id,
+                    adminEmail: adminEmail,
                     config: {
                         teamCount: parseInt(config.teamCount) || 5,
                         playersPerTeam: parseInt(config.playersPerTeam) || 9,
                         budget: parseInt(config.budget) || 1000,
                         basePrice: basePrice,
-                        maxBid: parseInt(config.maxBid) || Infinity // No limit if not set
+                        maxBid: parseInt(config.maxBid) || Infinity
                     },
-                    adminPin: Math.floor(100000 + Math.random() * 900000).toString(),
-                    captainPin: Math.floor(100000 + Math.random() * 900000).toString(),
                     teams: [],
                     players: initialPlayers,
-                    unpickedPlayers: [...initialPlayers], // Copy for randomizer
+                    unpickedPlayers: [...initialPlayers],
                     currentPlayer: null,
                     currentBid: { amount: 0, holder: null, holderName: null },
-                    bidHistory: [], // Track bids for undo
-                    passedTeams: [], // Teams that passed on CURRENT player (storing team names)
-                    biddingOrder: [], // Randomized order of team names
-                    activeTurn: null, // Team name whose turn it is
-                    roundRobinStartIndex: -1, // Which index in biddingOrder starts for this player
-                    state: 'WAITING', // WAITING, LIVE, PAUSED, ENDED
-                    activityLog: [] // [{ type: 'BID', text: '...' }]
+                    bidHistory: [],
+                    passedTeams: [],
+                    biddingOrder: [],
+                    activeTurn: null,
+                    roundRobinStartIndex: -1,
+                    state: 'WAITING',
+                    activityLog: [],
+                    invitations: []
                 };
                 data.leagues.set(leagueCode, league);
-                console.log(`[${leagueCode}][CREATE] League ${league.name} created. Admin PIN: ${league.adminPin}, Captain PIN: ${league.captainPin}`);
+                console.log(`[${leagueCode}][CREATE] League ${league.name} created by admin ${adminEmail}`);
                 socket.emit('ADMIN_RESTORE', { ...league, isNew: true });
             } else {
                 // Rejoin as admin
-                // Verify PIN
-                if (settings.adminPin && settings.adminPin !== league.adminPin) {
-                    socket.emit('ERROR', { message: "Invalid Admin PIN!" });
+                const clientEmail = settings?.email?.trim().toLowerCase();
+                if (!clientEmail || clientEmail !== league.adminEmail) {
+                    socket.emit('ERROR', { message: "You are not the designated Admin of this league!" });
                     return;
                 }
 
@@ -106,37 +103,65 @@ module.exports = (io, socket, data, supabase) => {
                 return;
             }
 
-            // Verify Captain PIN
-            if (league.captainPin && settings?.captainPin !== league.captainPin) {
-                socket.emit('ERROR', { message: "Invalid Captain PIN!" });
+            const cleanEmail = settings?.email?.trim().toLowerCase();
+            if (!cleanEmail) {
+                socket.emit('ERROR', { message: "An email address is required to join as a Captain." });
                 return;
             }
 
-            // Check max teams - Strict Check
-            if (league.teams.length >= league.config.teamCount) {
-                // Allow rejoin if name matches existing team
-                const existing = league.teams.find(t => t.name === name);
-                if (!existing) {
+            if (!league.invitations) league.invitations = [];
+            const invite = league.invitations.find(inv => inv.email === cleanEmail);
+            if (!invite) {
+                socket.emit('ERROR', { message: "You have not been invited to this league!" });
+                return;
+            }
+
+            invite.status = 'JOINED';
+
+            // Sync joined status to DB
+            if (supabase) {
+                supabase
+                    .from('invitations')
+                    .update({ status: 'JOINED' })
+                    .eq('league_code', leagueCode)
+                    .eq('email', cleanEmail)
+                    .then(({ error }) => {
+                        if (error) console.error("Supabase sync invitation update failed:", error);
+                    });
+            }
+
+            // Check if captain already has a team in this league (by email or name)
+            const existing = cleanEmail
+                ? league.teams.find(t => t.email === cleanEmail)
+                : league.teams.find(t => t.name === name);
+
+            if (existing) {
+                // Reconnect
+                existing.id = socket.id;
+                if (name) {
+                    existing.name = name;
+                }
+            } else {
+                if (league.teams.length >= league.config.teamCount) {
                     socket.emit('ERROR', { message: `League Full! Max ${league.config.teamCount} teams allowed.` });
                     return;
                 }
-                // Update socket id for existing team
-                existing.id = socket.id;
-            } else {
+
                 // Check name collision
                 if (league.teams.find(t => t.name === name)) {
-                    const existing = league.teams.find(t => t.name === name);
-                    existing.id = socket.id; // Reconnect
-                } else {
-                    // New Team
-                    const newTeam = {
-                        id: socket.id,
-                        name: name,
-                        budget: league.config.budget,
-                        squad: []
-                    };
-                    league.teams.push(newTeam);
+                    socket.emit('ERROR', { message: `Team Name "${name}" is already taken.` });
+                    return;
                 }
+
+                // New Team
+                const newTeam = {
+                    id: socket.id,
+                    name: name,
+                    email: cleanEmail,
+                    budget: league.config.budget,
+                    squad: []
+                };
+                league.teams.push(newTeam);
             }
         }
 
@@ -509,6 +534,130 @@ module.exports = (io, socket, data, supabase) => {
         broadcastUpdate(io, leagueCode, league);
     });
 
+    socket.on('INVITE_CAPTAIN', async ({ leagueCode, email }, callback) => {
+        const league = data.leagues.get(leagueCode);
+        if (!league) {
+            if (callback) callback({ error: "League not found!" });
+            return;
+        }
+
+        const isAdmin = socket.id === league.adminId;
+        if (!isAdmin) {
+            if (callback) callback({ error: "Unauthorized: Only the Admin can invite captains." });
+            return;
+        }
+
+        const cleanEmail = email.trim().toLowerCase();
+        
+        if (!league.invitations) league.invitations = [];
+        const exists = league.invitations.some(inv => inv.email === cleanEmail);
+        if (exists) {
+            if (callback) callback({ error: `${cleanEmail} is already invited.` });
+            return;
+        }
+
+        // Add invitation
+        league.invitations.push({ email: cleanEmail, status: 'PENDING' });
+
+        // Sync insert to DB
+        if (supabase) {
+            supabase
+                .from('invitations')
+                .insert([{ league_code: leagueCode, email: cleanEmail, status: 'PENDING' }])
+                .then(({ error }) => {
+                    if (error) console.error("Supabase sync invitation insert failed:", error);
+                });
+        }
+
+        console.log(`[${leagueCode}][INVITE] Invited Captain: ${cleanEmail}`);
+        await saveSnapshot(league);
+        broadcastUpdate(io, leagueCode, league);
+        if (callback) callback({ success: true });
+    });
+
+    socket.on('REMOVE_CAPTAIN', async ({ leagueCode, email }) => {
+        const league = data.leagues.get(leagueCode);
+        if (!league) return;
+
+        const isAdmin = socket.id === league.adminId;
+        if (!isAdmin) {
+            return socket.emit('ERROR', { message: "Unauthorized: Only the league Admin can remove captains." });
+        }
+
+        const cleanEmail = email.trim().toLowerCase();
+
+        // 1. Remove from invitations array
+        if (league.invitations) {
+            league.invitations = league.invitations.filter(inv => inv.email !== cleanEmail);
+        }
+
+        // 2. Remove team
+        const teamIndex = league.teams.findIndex(t => t.email?.toLowerCase() === cleanEmail);
+        if (teamIndex !== -1) {
+            const team = league.teams[teamIndex];
+            const targetSocketId = team.id;
+            
+            league.teams.splice(teamIndex, 1);
+            
+            if (targetSocketId) {
+                const targetSocket = io.sockets.sockets.get(targetSocketId);
+                if (targetSocket) {
+                    targetSocket.emit('ERROR', { message: "You have been removed from this league." });
+                    targetSocket.leave(leagueCode);
+                }
+            }
+        }
+
+        // 3. Sync delete to DB
+        if (supabase) {
+            supabase
+                .from('invitations')
+                .delete()
+                .eq('league_code', leagueCode)
+                .eq('email', cleanEmail)
+                .then(({ error }) => {
+                    if (error) console.error("Supabase sync invitation delete failed:", error);
+                });
+        }
+
+        console.log(`[${leagueCode}][REMOVE] Captain ${cleanEmail} removed from league`);
+        await saveSnapshot(league);
+        broadcastUpdate(io, leagueCode, league);
+    });
+
+    socket.on('CHECK_INVITATION', ({ leagueCode, email }, callback) => {
+        const league = data.leagues.get(leagueCode);
+        if (!league) {
+            if (callback) callback({ error: "League not found" });
+            return;
+        }
+
+        const cleanEmail = email.trim().toLowerCase();
+        const invite = league.invitations?.find(inv => inv.email === cleanEmail);
+        if (!invite) {
+            if (callback) callback({ error: "You have not been invited to this league!" });
+            return;
+        }
+
+        if (callback) callback({ league });
+    });
+
+    socket.on('GET_MY_LEAGUES', ({ email }) => {
+        const cleanEmail = email.trim().toLowerCase();
+        const adminLeagues = [];
+        const invitedLeagues = [];
+
+        for (const league of data.leagues.values()) {
+            if (league.adminEmail && league.adminEmail.toLowerCase() === cleanEmail) {
+                adminLeagues.push(league);
+            } else if (league.invitations?.some(inv => inv.email.toLowerCase() === cleanEmail)) {
+                invitedLeagues.push(league);
+            }
+        }
+
+        socket.emit('MY_LEAGUES', { adminLeagues, invitedLeagues });
+    });
+
     socket.on('disconnect', () => {
         const ip = socket.handshake.address;
         console.log(`User disconnected: ${socket.id} (IP: ${ip})`);
@@ -523,11 +672,12 @@ module.exports = (io, socket, data, supabase) => {
             state: league.state,
             currentBid: league.currentBid,
             currentPlayer: league.currentPlayer,
-            players: league.players, // Send full list for Admin view
+            players: league.players,
             activityLog: league.activityLog || [],
             passedTeams: league.passedTeams || [],
             biddingOrder: league.biddingOrder || [],
-            activeTurn: league.activeTurn || null
+            activeTurn: league.activeTurn || null,
+            invitations: league.invitations || []
         });
 
         // Also broadcast update to Super Admins
