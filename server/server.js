@@ -81,26 +81,71 @@ const data = {
     leagues: new Map(),
 };
 
+async function hydrateFromLocalBackups() {
+    const backupDir = path.join(__dirname, 'backups');
+    if (!fs.existsSync(backupDir)) {
+        console.log("No local backups directory found.");
+        return;
+    }
+    
+    try {
+        const files = fs.readdirSync(backupDir);
+        const jsonFiles = files.filter(f => f.endsWith('.json'));
+        
+        const leaguesMap = new Map();
+        
+        for (const file of jsonFiles) {
+            try {
+                const filePath = path.join(backupDir, file);
+                const content = fs.readFileSync(filePath, 'utf8');
+                const league = JSON.parse(content);
+                if (league && league.code) {
+                    const existing = leaguesMap.get(league.code);
+                    const mtime = fs.statSync(filePath).mtimeMs;
+                    if (!existing || mtime > existing.mtime) {
+                        leaguesMap.set(league.code, { data: league, mtime });
+                    }
+                }
+            } catch (err) {
+                // Ignore corrupt files
+            }
+        }
+        
+        leaguesMap.forEach((val, code) => {
+            data.leagues.set(code, val.data);
+        });
+        
+        console.log(`Successfully hydrated ${leaguesMap.size} leagues from local backups.`);
+    } catch (err) {
+        console.error("Local backups hydration error:", err);
+    }
+}
+
 async function hydrateFromDB() {
+    let success = false;
     if (supabase) {
         console.log("--- HYDRATING FROM SUPABASE ---");
         try {
             const { data: dbLeagues, error } = await supabase.from('leagues').select('*');
             if (error) {
                 console.error("Hydration failed:", error.message);
-                return;
-            }
-            if (dbLeagues) {
+            } else if (dbLeagues) {
                 dbLeagues.forEach(row => {
                     data.leagues.set(row.code, row.data);
                 });
                 console.log(`Successfully hydrated ${dbLeagues.length} leagues.`);
+                success = true;
             }
         } catch (e) {
             console.error("Hydration error:", e);
         }
     } else {
-        console.log("Supabase not configured. Starting with empty memory.");
+        console.log("Supabase not configured.");
+    }
+    
+    if (!success) {
+        console.log("Falling back to local backups hydration...");
+        await hydrateFromLocalBackups();
     }
 }
 

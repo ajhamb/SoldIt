@@ -108,6 +108,12 @@ export default function Welcome({ onJoin }) {
     };
 
     const handleJoin = () => {
+        if (role === 'SUPER_ADMIN') {
+            if (!pin) return alert("Super Admin Password is required");
+            onJoin('admin', '', 'SUPER_ADMIN', { password: pin });
+            return;
+        }
+
         if (!name || !code) return alert("Please enter Name and League Code");
         if (role === 'ADMIN' && !pin) return alert("Admin PIN is required to rejoin as Admin");
         if (role === 'CAPTAIN' && !pin) return alert("Captain PIN is required to join/rejoin as Captain");
@@ -129,12 +135,15 @@ export default function Welcome({ onJoin }) {
             {/* --- MENU VIEW --- */}
             {view === 'MENU' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', gap: '2rem' }}>
+                    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'center' }}>
                         <button id="create-league-btn" className="btn btn-primary" onClick={() => setView('CREATE')}>
                             Create New League
                         </button>
-                        <button id="join-league-btn" className="btn" style={{ background: 'transparent', border: '2px solid var(--secondary)', color: 'var(--secondary)' }} onClick={() => setView('JOIN')}>
+                        <button id="join-league-btn" className="btn" style={{ background: 'transparent', border: '2px solid var(--secondary)', color: 'var(--secondary)' }} onClick={() => { setView('JOIN'); setRole('CAPTAIN'); setName(''); }}>
                             Join Existing League
+                        </button>
+                        <button id="super-admin-menu-btn" className="btn" style={{ background: 'transparent', border: '2px solid #8b5cf6', color: '#a78bfa' }} onClick={() => { setView('SUPER_ADMIN'); setRole('SUPER_ADMIN'); setName('admin'); }}>
+                            Super Admin
                         </button>
                     </div>
                     <button
@@ -337,7 +346,7 @@ export default function Welcome({ onJoin }) {
                                 id="role-captain-btn"
                                 className={`btn ${role === 'CAPTAIN' ? 'btn-primary' : ''}`}
                                 style={{ flex: 1, border: '1px solid #555' }}
-                                onClick={() => setRole('CAPTAIN')}
+                                onClick={() => { setRole('CAPTAIN'); setName(''); }}
                             >
                                 Captain
                             </button>
@@ -345,7 +354,7 @@ export default function Welcome({ onJoin }) {
                                 id="role-admin-btn"
                                 className={`btn ${role === 'ADMIN' ? 'btn-primary' : ''}`}
                                 style={{ flex: 1, border: '1px solid #555' }}
-                                onClick={() => setRole('ADMIN')}
+                                onClick={() => { setRole('ADMIN'); setName(''); }}
                             >
                                 Admin
                             </button>
@@ -368,6 +377,63 @@ export default function Welcome({ onJoin }) {
 
                     <div style={{ marginTop: '2rem' }}>
                         <button id="enter-room-btn" className="btn btn-primary" style={{ width: '100%' }} onClick={handleJoin}>Enter Room</button>
+                    </div>
+                </div>
+            )}
+
+            {/* --- SUPER ADMIN VIEW --- */}
+            {view === 'SUPER_ADMIN' && (
+                <div className="card" style={{ width: '400px', textAlign: 'left' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1.5rem', position: 'relative' }}>
+                        <button 
+                            onClick={() => { setView('MENU'); setRole('CAPTAIN'); setName(''); }} 
+                            style={{ 
+                                position: 'absolute', 
+                                left: 0, 
+                                background: 'transparent', 
+                                border: 'none', 
+                                color: 'var(--text-muted)', 
+                                fontSize: '1.2rem',
+                                padding: '0.2rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.3rem',
+                                cursor: 'pointer',
+                                transition: 'color 0.2s'
+                            }}
+                            onMouseEnter={(e) => e.target.style.color = 'var(--primary)'}
+                            onMouseLeave={(e) => e.target.style.color = 'var(--text-muted)'}
+                        >
+                            ←
+                        </button>
+                        <h2 style={{ width: '100%', margin: 0, textAlign: 'center' }}>Super Admin Login</h2>
+                    </div>
+
+                    <div>
+                        <label style={{ display: 'block', marginBottom: '0.5rem' }}>Username</label>
+                        <input 
+                            id="super-admin-name-input" 
+                            type="text" 
+                            value={name} 
+                            disabled 
+                            style={inputStyle} 
+                        />
+                    </div>
+
+                    <div>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', color: '#a78bfa' }}>Super Admin Password</label>
+                        <input 
+                            id="super-admin-password-input" 
+                            type="password" 
+                            value={pin} 
+                            onChange={e => setPin(e.target.value)} 
+                            style={{ ...inputStyle, borderColor: '#8b5cf6' }} 
+                            placeholder="******" 
+                        />
+                    </div>
+
+                    <div style={{ marginTop: '2rem' }}>
+                        <button id="enter-room-btn" className="btn btn-primary" style={{ width: '100%', background: '#8b5cf6', borderColor: '#8b5cf6' }} onClick={handleJoin}>Enter Dashboard</button>
                     </div>
                 </div>
             )}

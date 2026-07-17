@@ -6,6 +6,19 @@ module.exports = (io, socket, data, supabase) => {
     // --- CREATE / JOIN LEAGUE ---
     // Now accepts detailed settings for Admin creation
     socket.on('JOIN_LEAGUE', async ({ leagueCode, name, role, settings }) => {
+        if (role === 'SUPER_ADMIN') {
+            const adminPassword = process.env.SUPER_ADMIN_PASSWORD || 'admin123';
+            if (name !== 'admin' || settings?.password !== adminPassword) {
+                return socket.emit('ERROR', { message: "Invalid Super Admin Credentials!" });
+            }
+            socket.join('super-admin-room');
+            console.log(`[SUPER_ADMIN][JOIN] Super Admin connected.`);
+            // Send initial leagues list
+            const allLeagues = Array.from(data.leagues.values());
+            socket.emit('SUPER_ADMIN_RESTORE', allLeagues);
+            return;
+        }
+
         socket.join(leagueCode);
 
         let league = data.leagues.get(leagueCode);
@@ -475,12 +488,32 @@ module.exports = (io, socket, data, supabase) => {
         broadcastUpdate(io, leagueCode, league);
     });
 
+    socket.on('SUPER_ADMIN_END_LEAGUE', async ({ leagueCode }) => {
+        // Enforce Super Admin room permission
+        const isSuperAdmin = socket.rooms.has('super-admin-room');
+        if (!isSuperAdmin) {
+            return socket.emit('ERROR', { message: "Unauthorized: Only Super Admins can force end auctions." });
+        }
+
+        const league = data.leagues.get(leagueCode);
+        if (!league) return socket.emit('ERROR', { message: "League not found!" });
+
+        league.state = 'ENDED';
+        league.currentPlayer = null;
+        league.activeTurn = null;
+        console.log(`[SUPER_ADMIN][END] Super Admin force ended league ${leagueCode}`);
+        
+        await saveSnapshot(league, 'SUPER_ADMIN_END');
+
+        io.to(leagueCode).emit('AUCTION_ENDED');
+        broadcastUpdate(io, leagueCode, league);
+    });
+
     socket.on('disconnect', () => {
         const ip = socket.handshake.address;
         console.log(`User disconnected: ${socket.id} (IP: ${ip})`);
     });
 
-    // Utils
     function broadcastUpdate(io, leagueCode, league) {
         io.to(leagueCode).emit('LEAGUE_UPDATE', {
             code: league.code,
@@ -496,6 +529,10 @@ module.exports = (io, socket, data, supabase) => {
             biddingOrder: league.biddingOrder || [],
             activeTurn: league.activeTurn || null
         });
+
+        // Also broadcast update to Super Admins
+        const allLeagues = Array.from(data.leagues.values());
+        io.to('super-admin-room').emit('SUPER_ADMIN_UPDATE', allLeagues);
     }
 
     function pickNextPlayer(league, io, leagueCode) {
