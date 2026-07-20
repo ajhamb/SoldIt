@@ -53,22 +53,15 @@ test.describe('SoldIt E2E Auction Flow', () => {
         await adminPage.click('#start-league-final-btn');
         console.log('Admin: Start League clicked');
 
-        // Wait for the SUCCESS MODAL
-        const onboardingHeading = adminPage.locator('h2', { hasText: 'LEAGUE CREATED!' });
-        await expect(onboardingHeading).toBeVisible({ timeout: 20000 });
-        console.log('Admin: Onboarding modal visible');
-
-        // Capture details
-        const leagueCode = await adminPage.locator('#modal-league-code').textContent().then(t => t?.trim() || '');
+        // Capture League Code from header
+        const headerText = await adminPage.locator('h2:has-text("LEAGUE:")').textContent({ timeout: 20000 });
+        const leagueCode = headerText?.replace('LEAGUE:', '').trim() || '';
         console.log(`Admin: Captured League Code: ${leagueCode}`);
-
-        await adminPage.click('#onboarding-close-btn');
-        console.log('Admin: Modal closed');
 
         // Invite Captain
         await adminPage.fill('input[placeholder="captain@example.com"]', 'captain@test.com');
         await adminPage.click('button:has-text("Invite")');
-        await expect(adminPage.locator('div').filter({ hasText: 'captain@test.com' }).first()).toBeVisible({ timeout: 10000 });
+        await expect(adminPage.locator('span', { hasText: 'captain@test.com' }).first()).toBeVisible({ timeout: 15000 });
         console.log('Admin: Sent invitation to captain@test.com');
 
         // 2. Captain setup

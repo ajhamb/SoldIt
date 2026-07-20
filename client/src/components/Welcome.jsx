@@ -9,17 +9,16 @@ export default function Welcome({ onJoin, user, socket }) {
     // Dashboard Leagues State
     const [adminLeagues, setAdminLeagues] = useState([]);
     const [invitedLeagues, setInvitedLeagues] = useState([]);
-    const [loadingLeagues, setLoadingLeagues] = useState(false);
+    const [loadingLeagues, setLoadingLeagues] = useState(true);
+    const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
-    // League Join Code Entry (Direct Input)
-    const [joinCodeInput, setJoinCodeInput] = useState('');
+
 
     // Modal to request Team Name when Captain enters league for first time
     const [captainJoinModal, setCaptainJoinModal] = useState(null); // league object
     const [newTeamName, setNewTeamName] = useState('');
 
     // User Identity for offline mock / super admin joins
-    const [superAdminPassword, setSuperAdminPassword] = useState('');
     const [mockEmailInput, setMockEmailInput] = useState('');
 
     // League Config (for CREATE mode)
@@ -49,9 +48,10 @@ export default function Welcome({ onJoin, user, socket }) {
     useEffect(() => {
         if (!user) return;
 
-        const handleMyLeagues = ({ adminLeagues, invitedLeagues }) => {
+        const handleMyLeagues = ({ adminLeagues, invitedLeagues, isSuperAdmin: superAdminFlag }) => {
             setAdminLeagues(adminLeagues);
             setInvitedLeagues(invitedLeagues);
+            setIsSuperAdmin(Boolean(superAdminFlag));
             setLoadingLeagues(false);
         };
 
@@ -201,22 +201,7 @@ export default function Welcome({ onJoin, user, socket }) {
         setCaptainJoinModal(null);
     };
 
-    // Allows Captains to join a league by entering the code
-    const handleJoinByCode = (e) => {
-        e.preventDefault();
-        if (!joinCodeInput.trim()) return;
-        const code = joinCodeInput.trim().toUpperCase();
 
-        setLoadingLeagues(true);
-        socket.emit('CHECK_INVITATION', { leagueCode: code, email: user.email.toLowerCase() }, (response) => {
-            setLoadingLeagues(false);
-            if (response.error) {
-                alert(response.error);
-            } else {
-                handleCaptainEnter(response.league);
-            }
-        });
-    };
 
     // Mock sign-in handler for E2E and offline testing
     const handleMockLogin = (e) => {
@@ -231,12 +216,6 @@ export default function Welcome({ onJoin, user, socket }) {
         };
         localStorage.setItem('e2e_mock_user', JSON.stringify(mockUser));
         window.location.reload();
-    };
-
-    const handleSuperAdminLogin = (e) => {
-        e.preventDefault();
-        if (!superAdminPassword.trim()) return alert("Super Admin Password is required");
-        onJoin('admin', '', 'SUPER_ADMIN', { password: superAdminPassword });
     };
 
     const inputStyle = {
@@ -257,7 +236,7 @@ export default function Welcome({ onJoin, user, socket }) {
                     {supabase ? (
                         <>
                             <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '2rem' }}>Sign in with Google to access your leagues, manage drafts, and bid in real-time.</p>
-                            <button className="btn" style={{ width: '100%', background: '#fff', color: '#000', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.8rem', border: 'none', padding: '1rem', borderRadius: '30px', cursor: 'pointer', fontSize: '1.05rem', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }} onClick={handleGoogleLogin}>
+                            <button id="google-login-btn" className="btn" style={{ width: '100%', background: '#fff', color: '#000', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.8rem', border: 'none', padding: '1rem', borderRadius: '30px', cursor: 'pointer', fontSize: '1.05rem', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }} onClick={handleGoogleLogin}>
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                                     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
                                     <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -318,23 +297,14 @@ export default function Welcome({ onJoin, user, socket }) {
                         <button id="create-league-btn" className="btn btn-primary" onClick={() => setView('CREATE')}>
                             Create New League
                         </button>
-                        <form onSubmit={handleJoinByCode} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                            <input 
-                                id="join-league-code-input"
-                                type="text" 
-                                placeholder="Enter League Code" 
-                                value={joinCodeInput} 
-                                onChange={e => setJoinCodeInput(e.target.value)} 
-                                style={{ ...inputStyle, marginBottom: 0, width: '160px', padding: '0.6rem' }} 
-                            />
-                            <button id="join-by-code-btn" className="btn" type="submit" style={{ padding: '0.6rem 1rem', background: 'transparent', border: '2px solid var(--secondary)', color: 'var(--secondary)' }}>Join</button>
-                        </form>
                         <button className="btn" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid #444', color: '#888' }} onClick={() => setShowHowTo(true)}>
                             How To Play?
                         </button>
-                        <button id="super-admin-menu-btn" className="btn" style={{ background: 'transparent', border: '2px solid #8b5cf6', color: '#a78bfa' }} onClick={() => { setView('SUPER_ADMIN'); }}>
-                            Super Admin
-                        </button>
+                        {isSuperAdmin && (
+                            <button id="super-admin-menu-btn" className="btn" style={{ background: 'transparent', border: '2px solid #8b5cf6', color: '#a78bfa' }} onClick={() => onJoin(user?.email || 'admin', '', 'SUPER_ADMIN')}>
+                                Super Admin
+                            </button>
+                        )}
                     </div>
 
                     {loadingLeagues ? (
@@ -348,15 +318,31 @@ export default function Welcome({ onJoin, user, socket }) {
                                     <p className="text-muted" style={{ fontSize: '0.9rem' }}>You haven't created any leagues yet.</p>
                                 ) : (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '350px', overflowY: 'auto' }}>
-                                        {adminLeagues.map(l => (
-                                            <div key={l.code} className="league-card" style={{ padding: '0.8rem', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', border: '1px solid #222', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <div>
-                                                    <strong style={{ color: '#fff' }}>{l.name}</strong>
-                                                    <div style={{ fontSize: '0.8rem', color: '#888' }}>Code: <span style={{ color: 'var(--secondary)' }}>{l.code}</span> | Teams: {l.teams?.length || 0}/{l.config?.teamCount || 0}</div>
+                                        {adminLeagues.map(l => {
+                                            const stateColors = { WAITING: '#f59e0b', LIVE: '#10b981', PAUSED: '#3b82f6', ENDED: '#ef4444' };
+                                            return (
+                                                <div key={l.code} className="league-card" style={{ padding: '0.8rem', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', border: '1px solid #222', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                            <strong style={{ color: '#fff' }}>{l.name}</strong>
+                                                            <span style={{
+                                                                padding: '0.15rem 0.4rem',
+                                                                borderRadius: '4px',
+                                                                fontSize: '0.65rem',
+                                                                background: (stateColors[l.state] || '#555') + '22',
+                                                                color: stateColors[l.state] || '#888',
+                                                                border: `1px solid ${stateColors[l.state] || '#555'}`,
+                                                                fontWeight: 'bold'
+                                                            }}>
+                                                                {l.state || 'WAITING'}
+                                                            </span>
+                                                        </div>
+                                                        <div style={{ fontSize: '0.8rem', color: '#888', marginTop: '0.2rem' }}>Code: <span style={{ color: 'var(--secondary)' }}>{l.code}</span> | Teams: {l.teams?.length || 0}/{l.config?.teamCount || 0}</div>
+                                                    </div>
+                                                    <button className="btn btn-primary enter-league-btn" onClick={() => handleAdminEnter(l)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>Enter</button>
                                                 </div>
-                                                <button className="btn btn-primary enter-league-btn" onClick={() => handleAdminEnter(l)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>Enter</button>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </div>
@@ -370,11 +356,25 @@ export default function Welcome({ onJoin, user, socket }) {
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '350px', overflowY: 'auto' }}>
                                         {invitedLeagues.map(l => {
                                             const myTeam = l.teams?.find(t => t.email?.toLowerCase() === user.email.toLowerCase());
+                                            const stateColors = { WAITING: '#f59e0b', LIVE: '#10b981', PAUSED: '#3b82f6', ENDED: '#ef4444' };
                                             return (
                                                 <div key={l.code} className="league-card" style={{ padding: '0.8rem', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', border: '1px solid #222', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                     <div>
-                                                        <strong style={{ color: '#fff' }}>{l.name}</strong>
-                                                        <div style={{ fontSize: '0.8rem', color: '#888' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                            <strong style={{ color: '#fff' }}>{l.name}</strong>
+                                                            <span style={{
+                                                                padding: '0.15rem 0.4rem',
+                                                                borderRadius: '4px',
+                                                                fontSize: '0.65rem',
+                                                                background: (stateColors[l.state] || '#555') + '22',
+                                                                color: stateColors[l.state] || '#888',
+                                                                border: `1px solid ${stateColors[l.state] || '#555'}`,
+                                                                fontWeight: 'bold'
+                                                            }}>
+                                                                {l.state || 'WAITING'}
+                                                            </span>
+                                                        </div>
+                                                        <div style={{ fontSize: '0.8rem', color: '#888', marginTop: '0.2rem' }}>
                                                             Code: <span style={{ color: 'var(--secondary)' }}>{l.code}</span>
                                                             {myTeam && <span style={{ color: '#34d399' }}> | Team: {myTeam.name}</span>}
                                                         </div>
@@ -492,37 +492,6 @@ export default function Welcome({ onJoin, user, socket }) {
                 </div>
             )}
 
-            {/* --- SUPER ADMIN VIEW --- */}
-            {view === 'SUPER_ADMIN' && (
-                <div className="card" style={{ width: '400px', textAlign: 'left' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1.5rem', position: 'relative' }}>
-                        <button 
-                            onClick={() => { setView('MENU'); }} 
-                            style={{ position: 'absolute', left: 0, background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', padding: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer', transition: 'color 0.2s' }}
-                            onMouseEnter={(e) => e.target.style.color = 'var(--primary)'}
-                            onMouseLeave={(e) => e.target.style.color = 'var(--text-muted)'}
-                        >
-                            ←
-                        </button>
-                        <h2 style={{ width: '100%', margin: 0, textAlign: 'center' }}>Super Admin Login</h2>
-                    </div>
-
-                    <div>
-                        <label style={{ display: 'block', marginBottom: '0.5rem' }}>Username</label>
-                        <input id="super-admin-name-input" type="text" value="admin" disabled style={inputStyle} />
-                    </div>
-
-                    <div>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', color: '#a78bfa' }}>Super Admin Password</label>
-                        <input id="super-admin-password-input" type="password" value={superAdminPassword} onChange={e => setMockEmailInput(e.target.value) /* reuse state for ease */ || setSuperAdminPassword(e.target.value)} style={{ ...inputStyle, borderColor: '#8b5cf6' }} placeholder="******" />
-                    </div>
-
-                    <div style={{ marginTop: '2rem' }}>
-                        <button id="enter-room-btn" className="btn btn-primary" style={{ width: '100%', background: '#8b5cf6', borderColor: '#8b5cf6' }} onClick={handleSuperAdminLogin}>Enter Dashboard</button>
-                    </div>
-                </div>
-            )}
-
             {/* --- CAPTAIN JOIN DETAIL DIALOG (First time entering team name) --- */}
             {captainJoinModal && (
                 <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: '1rem' }}>
@@ -594,7 +563,7 @@ export default function Welcome({ onJoin, user, socket }) {
                             <h3 style={{ color: 'var(--primary)', marginBottom: '0.8rem', fontSize: '1.2rem', borderBottom: '1px solid #333', paddingBottom: '0.5rem' }}>⚡ For Captains</h3>
                             <ol style={{ paddingLeft: '1.2rem', color: '#ccc', lineHeight: '1.6', fontSize: '0.9rem' }}>
                                 <li>Log in via Google.</li>
-                                <li>Your dashboard shows leagues you are invited to. Alternatively, enter a League Code in the join box.</li>
+                                <li>Your dashboard automatically lists all leagues you participate in. Simply click <strong>Enter</strong> to join your draft room!</li>
                                 <li>Enter your team name and enter the draft room!</li>
                             </ol>
                         </div>

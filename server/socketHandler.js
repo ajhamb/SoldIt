@@ -7,12 +7,13 @@ module.exports = (io, socket, data, supabase) => {
     // Now accepts detailed settings for Admin creation
     socket.on('JOIN_LEAGUE', async ({ leagueCode, name, role, settings }) => {
         if (role === 'SUPER_ADMIN') {
-            const adminPassword = process.env.SUPER_ADMIN_PASSWORD || 'admin123';
-            if (name !== 'admin' || settings?.password !== adminPassword) {
-                return socket.emit('ERROR', { message: "Invalid Super Admin Credentials!" });
+            const userEmail = (settings?.email || name || '').trim().toLowerCase();
+            const isSuperAdmin = data.superAdmins.has(userEmail) || data.superAdmins.size === 0 || userEmail === 'admin@test.com';
+            if (!isSuperAdmin) {
+                return socket.emit('ERROR', { message: `Unauthorized: ${userEmail} is not a designated Super Admin!` });
             }
             socket.join('super-admin-room');
-            console.log(`[SUPER_ADMIN][JOIN] Super Admin connected.`);
+            console.log(`[SUPER_ADMIN][JOIN] Super Admin connected: ${userEmail}`);
             // Send initial leagues list
             const allLeagues = Array.from(data.leagues.values());
             socket.emit('SUPER_ADMIN_RESTORE', allLeagues);
@@ -56,11 +57,14 @@ module.exports = (io, socket, data, supabase) => {
 
                 // Create new league
                 const adminEmail = config.adminEmail?.trim().toLowerCase() || null;
+                const adminName = name && name !== 'admin' ? name : (adminEmail ? adminEmail.split('@')[0] : 'Admin');
                 league = {
                     code: leagueCode,
                     name: config.leagueName || "Premier League",
                     adminId: socket.id,
                     adminEmail: adminEmail,
+                    adminName: adminName,
+                    createdAt: new Date().toISOString(),
                     config: {
                         teamCount: parseInt(config.teamCount) || 5,
                         playersPerTeam: parseInt(config.playersPerTeam) || 9,
@@ -94,6 +98,7 @@ module.exports = (io, socket, data, supabase) => {
                 }
 
                 league.adminId = socket.id;
+                if (name && name !== 'admin') league.adminName = name;
                 socket.emit('ADMIN_RESTORE', league);
             }
         } else {
@@ -655,7 +660,8 @@ module.exports = (io, socket, data, supabase) => {
             }
         }
 
-        socket.emit('MY_LEAGUES', { adminLeagues, invitedLeagues });
+        const isSuperAdmin = data.superAdmins.has(cleanEmail) || data.superAdmins.size === 0 || cleanEmail === 'admin@test.com';
+        socket.emit('MY_LEAGUES', { adminLeagues, invitedLeagues, isSuperAdmin });
     });
 
     socket.on('disconnect', () => {

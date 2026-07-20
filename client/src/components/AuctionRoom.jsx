@@ -296,34 +296,7 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
                 <RulesModal config={config} onClose={() => setShowRules(false)} />
             )}
 
-            {/* --- ONBOARDING / SUCCESS MODAL --- */}
-            {showSuccess && role === 'ADMIN' && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
-                    background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    zIndex: 2000, padding: '1rem'
-                }}>
-                    <div className="card neon-border" style={{ maxWidth: '500px', width: '100%', textAlign: 'center', padding: '2rem' }}>
-                        <h2 style={{ color: 'var(--primary)', marginBottom: '1rem' }}>🎉 LEAGUE CREATED!</h2>
-                        <p style={{ color: '#ccc', marginBottom: '2rem' }}>Please save your League Code carefully!</p>
 
-                        <div style={{ background: '#111', padding: '1.5rem', borderRadius: '8px', border: '1px solid #333', marginBottom: '2rem' }}>
-                            <div style={{ marginBottom: '0.5rem' }}>
-                                <small style={{ color: '#888', display: 'block', textTransform: 'uppercase', fontSize: '0.7rem' }}>League Code</small>
-                                <strong id="modal-league-code" style={{ fontSize: '2.5rem', color: '#fff', letterSpacing: '2px' }}>{leagueCode}</strong>
-                            </div>
-                        </div>
-
-                        <div style={{ background: 'rgba(52, 211, 153, 0.1)', padding: '1rem', borderRadius: '4px', border: '1px solid #34d399', marginBottom: '2rem', fontSize: '0.9rem', color: '#34d399' }}>
-                            💡 <strong>Invite Captains:</strong> You can invite captains directly using their Gmail address from the waiting room.
-                        </div>
-
-                        <button id="onboarding-close-btn" className="btn btn-primary" style={{ width: '100%', padding: '1rem' }} onClick={() => setShowSuccess(false)}>
-                            Let's Go!
-                        </button>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }

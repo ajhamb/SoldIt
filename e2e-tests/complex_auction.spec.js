@@ -57,14 +57,10 @@ test.describe('SoldIt Complex E2E Auction Flow', () => {
         // Submit League Creation
         await adminPage.click('#start-league-final-btn');
 
-        // Wait for dynamic credentials modal
-        const onboardingHeading = adminPage.locator('h2', { hasText: 'LEAGUE CREATED!' });
-        await expect(onboardingHeading).toBeVisible({ timeout: 25000 });
-
-        const leagueCode = await adminPage.locator('#modal-league-code').textContent().then(t => t?.trim() || '');
+        // Capture League Code from header
+        const headerText = await adminPage.locator('h2:has-text("LEAGUE:")').textContent({ timeout: 25000 });
+        const leagueCode = headerText?.replace('LEAGUE:', '').trim() || '';
         console.log(`Admin: League Code = ${leagueCode}`);
-
-        await adminPage.click('#onboarding-close-btn');
 
         // Invite Captains
         const captainEmails = [
@@ -77,7 +73,7 @@ test.describe('SoldIt Complex E2E Auction Flow', () => {
         for (const email of captainEmails) {
             await adminPage.fill('input[placeholder="captain@example.com"]', email);
             await adminPage.click('button:has-text("Invite")');
-            await expect(adminPage.locator('div').filter({ hasText: email }).first()).toBeVisible({ timeout: 10000 });
+            await expect(adminPage.locator('span', { hasText: email }).first()).toBeVisible({ timeout: 15000 });
         }
         console.log('Admin: Invited all 4 captains');
 

@@ -79,6 +79,7 @@ const io = new Server(server, {
 // In-memory data store (hydrated from Supabase on startup)
 const data = {
     leagues: new Map(),
+    superAdmins: new Set()
 };
 
 async function hydrateFromLocalBackups() {
@@ -122,6 +123,13 @@ async function hydrateFromLocalBackups() {
 }
 
 async function hydrateFromDB() {
+    // Seed Super Admins from environment variable
+    const envSuperAdmins = (process.env.SUPER_ADMIN_EMAILS || '')
+        .split(',')
+        .map(e => e.trim().toLowerCase())
+        .filter(Boolean);
+    envSuperAdmins.forEach(email => data.superAdmins.add(email));
+
     let success = false;
     if (supabase) {
         console.log("--- HYDRATING FROM SUPABASE ---");
@@ -135,6 +143,15 @@ async function hydrateFromDB() {
                 });
                 console.log(`Successfully hydrated ${dbLeagues.length} leagues.`);
                 success = true;
+            }
+
+            // Hydrate Super Admins from DB table
+            const { data: dbSuperAdmins, error: saError } = await supabase.from('super_admins').select('email');
+            if (!saError && dbSuperAdmins) {
+                dbSuperAdmins.forEach(row => {
+                    if (row.email) data.superAdmins.add(row.email.trim().toLowerCase());
+                });
+                console.log(`Successfully hydrated ${data.superAdmins.size} super admins.`);
             }
         } catch (e) {
             console.error("Hydration error:", e);
