@@ -79,8 +79,14 @@ export default function Welcome({ onJoin, user, socket }) {
         localStorage.removeItem('e2e_mock_user');
         localStorage.removeItem('auction_session');
         if (supabase) {
-            const { error } = await supabase.auth.signOut();
-            if (error) alert("Logout Error: " + error.message);
+            try {
+                const { error } = await supabase.auth.signOut();
+                if (error && error.message !== 'Auth session missing') {
+                    console.warn("Logout error:", error.message);
+                }
+            } catch (err) {
+                console.error("Supabase signOut error:", err);
+            }
         }
         window.location.reload();
     };
