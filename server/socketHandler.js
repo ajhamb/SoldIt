@@ -199,6 +199,19 @@ module.exports = (io, socket, data, supabase) => {
         pickNextPlayer(league, io, leagueCode);
     });
 
+    socket.on('DRAW_NEXT_PLAYER', async ({ leagueCode }) => {
+        const league = data.leagues.get(leagueCode);
+        if (!league || league.state !== 'LIVE') return;
+        
+        // Ensure sender is the designated Admin
+        if (league.adminEmail !== socket.handshake.query.email?.trim().toLowerCase() && league.adminId !== socket.id) {
+            return;
+        }
+
+        pickNextPlayer(league, io, leagueCode);
+        broadcastUpdate(io, leagueCode, league);
+    });
+
     // --- PLACE BID ---
     socket.on('PLACE_BID', async ({ leagueCode, amount }) => {
         const league = data.leagues.get(leagueCode);
@@ -444,9 +457,11 @@ module.exports = (io, socket, data, supabase) => {
     // --- SOLD ---
     socket.on('SOLD', async ({ leagueCode }) => {
         const league = data.leagues.get(leagueCode);
-        if (!league || !league.currentBid.holder) return;
+        if (!league || !league.currentBid.holderName) return;
+        if (!league.currentPlayer || league.currentPlayer.status === 'SOLD') return;
 
-        const team = league.teams.find(t => t.id === league.currentBid.holder);
+        const team = league.teams.find(t => t.name === league.currentBid.holderName);
+        if (!team) return;
         const player = league.currentPlayer;
 
         // Transact
@@ -478,9 +493,6 @@ module.exports = (io, socket, data, supabase) => {
         });
 
         broadcastUpdate(io, leagueCode, league);
-
-        // Next
-        setTimeout(() => pickNextPlayer(league, io, leagueCode), 1000);
     });
 
     // --- UNSOLD / PASS ---
@@ -501,8 +513,6 @@ module.exports = (io, socket, data, supabase) => {
 
         io.to(leagueCode).emit('PLAYER_UNSOLD', { player });
         broadcastUpdate(io, leagueCode, league);
-
-        setTimeout(() => pickNextPlayer(league, io, leagueCode), 1000);
     });
 
     // --- END SESSION ---
@@ -683,7 +693,8 @@ module.exports = (io, socket, data, supabase) => {
             passedTeams: league.passedTeams || [],
             biddingOrder: league.biddingOrder || [],
             activeTurn: league.activeTurn || null,
-            invitations: league.invitations || []
+            invitations: league.invitations || [],
+            jackpotRun: league.jackpotRun || false
         });
 
         // Also broadcast update to Super Admins
@@ -703,6 +714,7 @@ module.exports = (io, socket, data, supabase) => {
         const nextP = league.unpickedPlayers.pop();
         league.currentPlayer = nextP;
         league.currentBid = { amount: 0, holder: null, holderName: null };
+        league.jackpotRun = false;
         league.bidHistory = []; // Reset history for new player
         league.passedTeams = []; // Reset passed teams for new player
 

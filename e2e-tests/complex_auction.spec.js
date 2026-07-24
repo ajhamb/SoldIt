@@ -187,6 +187,12 @@ test.describe('SoldIt Complex E2E Auction Flow', () => {
         await adminPage.waitForTimeout(2000); // Wait for transition
         console.log('Round 1: Player sold by Admin');
 
+        // Admin chooses next player for Round 2
+        await expect(adminPage.locator('#choose-next-player-btn')).toBeVisible({ timeout: 15000 });
+        await adminPage.click('#choose-next-player-btn');
+        await expect(adminPage.locator('#choose-next-player-btn')).not.toBeVisible({ timeout: 15000 });
+        console.log('Admin: Choose Next Player clicked for Round 2');
+
         // 5. ROUND 2 - PURSE/BUDGET LIMIT EXCEEDED WARNING (AT LEAST 1 INSUFFICIENT PURSE CASE)
         // Wait for next player to appear
         currentTurn = await getActiveTurn(adminPage);
@@ -217,6 +223,12 @@ test.describe('SoldIt Complex E2E Auction Flow', () => {
         await adminPage.click('#admin-sold-btn');
         await adminPage.waitForTimeout(2000);
 
+        // Admin chooses next player for Round 3
+        await expect(adminPage.locator('#choose-next-player-btn')).toBeVisible({ timeout: 15000 });
+        await adminPage.click('#choose-next-player-btn');
+        await expect(adminPage.locator('#choose-next-player-btn')).not.toBeVisible({ timeout: 15000 });
+        console.log('Admin: Choose Next Player clicked for Round 3');
+
         // 6. ROUND 3 - UNSOLD/SKIP PLAYER FLOW (UI FUNCTIONALITY CHECK)
         // Let's check Rules Modal UI functionality on Captain's page
         await captainPages[0].click('button:has-text("Rules")');
@@ -240,6 +252,12 @@ test.describe('SoldIt Complex E2E Auction Flow', () => {
         await adminPage.click('#admin-skip-btn');
         await adminPage.waitForTimeout(2000);
         console.log('Round 3: Player marked UNSOLD/SKIPPED by Admin');
+
+        // Admin chooses next player for Round 4
+        await expect(adminPage.locator('#choose-next-player-btn')).toBeVisible({ timeout: 15000 });
+        await adminPage.click('#choose-next-player-btn');
+        await expect(adminPage.locator('#choose-next-player-btn')).not.toBeVisible({ timeout: 15000 });
+        console.log('Admin: Choose Next Player clicked for Round 4');
 
         // 7. ROUND 4 - FINAL ROUND
         currentTurn = await getActiveTurn(adminPage);

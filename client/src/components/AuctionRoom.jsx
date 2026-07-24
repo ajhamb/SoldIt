@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import AdminControls from './AdminControls';
 import CaptainControls from './CaptainControls';
 import PlayerListView from './PlayerListView';
@@ -18,11 +18,10 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
         e.preventDefault();
         if (!inviteEmail) return;
         const cleanEmail = inviteEmail.trim().toLowerCase();
+        setInviteEmail('');
         socket.emit('INVITE_CAPTAIN', { leagueCode, email: cleanEmail }, (response) => {
             if (response && response.error) {
                 alert(response.error);
-            } else {
-                setInviteEmail('');
             }
         });
     };
@@ -201,7 +200,44 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
                             </div>
                         )}
 
-                        {isLive && currentPlayer && (
+                        {isLive && currentPlayer && (currentPlayer.status === 'SOLD' || currentPlayer.status === 'UNSOLD') && (
+                            <div className="card neon-border" style={{ width: '100%', maxWidth: '600px', textAlign: 'center', padding: '2.5rem' }}>
+                                <div style={{ fontSize: '1.2rem', color: '#777', marginBottom: '0.5rem' }}>{currentPlayer.category}</div>
+                                <h1 style={{ fontSize: '3rem', marginBottom: '0.5rem', textTransform: 'uppercase', color: currentPlayer.status === 'SOLD' ? '#22c55e' : '#ef4444' }}>
+                                    {currentPlayer.status === 'SOLD' ? 'SOLD' : 'UNSOLD'}
+                                </h1>
+                                <h2 style={{ fontSize: '2.2rem', marginBottom: '1rem', textTransform: 'uppercase' }}>{currentPlayer.name}</h2>
+                                
+                                {currentPlayer.status === 'SOLD' ? (
+                                    <div style={{ fontSize: '1.5rem', color: '#fff' }}>
+                                        Purchased by <strong style={{ color: 'var(--primary)' }}>{currentPlayer.soldTo}</strong> for <strong style={{ color: 'var(--secondary)' }}>{currentPlayer.soldAt} Th</strong>
+                                    </div>
+                                ) : (
+                                    <div style={{ fontSize: '1.5rem', color: '#888' }}>
+                                        Player went unsold and has been returned to the pool.
+                                    </div>
+                                )}
+
+                                <hr style={{ borderColor: '#333', margin: '2rem 0' }} />
+
+                                {role === 'ADMIN' ? (
+                                    <button
+                                        id="choose-next-player-btn"
+                                        className="btn btn-primary"
+                                        style={{ padding: '0.8rem 2rem', fontSize: '1.2rem', fontWeight: 'bold' }}
+                                        onClick={() => socket.emit('DRAW_NEXT_PLAYER', { leagueCode })}
+                                    >
+                                        Choose Next Player ➡️
+                                    </button>
+                                ) : (
+                                    <div style={{ color: '#888', fontStyle: 'italic' }}>
+                                        Waiting for Admin to choose the next player...
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {isLive && currentPlayer && currentPlayer.status !== 'SOLD' && currentPlayer.status !== 'UNSOLD' && (
                             <div className="card neon-border" style={{ width: '100%', maxWidth: '600px', textAlign: 'center', padding: '2rem' }}>
                                 <div style={{ fontSize: '1.2rem', color: '#777', marginBottom: '0.5rem' }}>{currentPlayer.category}</div>
                                 <h1 style={{ fontSize: '3.5rem', marginBottom: '0.5rem', textTransform: 'uppercase' }}>{currentPlayer.name}</h1>
@@ -228,10 +264,10 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
 
                     {/* CONTROLS */}
                     <div style={{ marginTop: '1rem' }}>
-                        {role === 'ADMIN' && isLive && (
+                        {role === 'ADMIN' && isLive && currentPlayer && currentPlayer.status !== 'SOLD' && currentPlayer.status !== 'UNSOLD' && (
                             <AdminControls socket={socket} leagueCode={leagueCode} maxBid={leagueState.config?.maxBid} />
                         )}
-                        {role === 'CAPTAIN' && isLive && myTeam && (
+                        {role === 'CAPTAIN' && isLive && myTeam && currentPlayer && currentPlayer.status !== 'SOLD' && currentPlayer.status !== 'UNSOLD' && (
                             <CaptainControls
                                 socket={socket}
                                 leagueCode={leagueCode}
