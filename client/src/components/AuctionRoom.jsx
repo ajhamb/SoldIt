@@ -281,7 +281,7 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
                                         style={{ padding: '0.8rem 2rem', fontSize: '1.2rem', fontWeight: 'bold' }}
                                         onClick={() => socket.emit('DRAW_NEXT_PLAYER', { leagueCode })}
                                     >
-                                        Choose Next Player ➡️
+                                        Next Player ➡️
                                     </button>
                                 ) : (
                                     <div style={{ color: '#888', fontStyle: 'italic' }}>

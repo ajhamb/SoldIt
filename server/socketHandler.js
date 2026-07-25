@@ -35,10 +35,20 @@ module.exports = (io, socket, data, supabase) => {
         if (role === 'ADMIN') {
             const isCreating = settings && settings.players && settings.players.length > 0;
 
-            if (isCreating && league) {
-                return socket.emit('ERROR', {
-                    message: `League Code ${leagueCode} is already in use. Please try again (your browser should generate a new code).`
-                });
+            if (isCreating) {
+                let codeToCheck = leagueCode;
+                let loopCount = 0;
+                while (data.leagues.has(codeToCheck)) {
+                    codeToCheck = Math.random().toString(36).substring(2, 8).toUpperCase();
+                    loopCount++;
+                    if (loopCount > 100) break;
+                }
+                if (codeToCheck !== leagueCode) {
+                    console.log(`[DUPLICATE DETECTED] Replacing duplicate leagueCode ${leagueCode} with unique code ${codeToCheck}`);
+                    socket.leave(leagueCode);
+                    leagueCode = codeToCheck;
+                    socket.join(leagueCode);
+                }
             }
 
             if (!league) {
@@ -330,12 +340,18 @@ module.exports = (io, socket, data, supabase) => {
         league.activityLog.unshift(logEntry);
         if (league.activityLog.length > 50) league.activityLog.pop();
 
-
         console.log(`[${leagueCode}][BID] ${team.name} bid ${amount} on ${league.currentPlayer.name}`);
+
+        if (league.config.maxBid && amount === league.config.maxBid) {
+            // Bid reached max bid limit. Sell automatically!
+            await executeSoldTransaction(league, leagueCode);
+            return;
+        }
+
         await saveSnapshot(league);
 
         // Advance Turn
-        findNextTurn(league);
+        await findNextTurn(league, leagueCode);
 
         io.to(leagueCode).emit('BID_UPDATE', league.currentBid);
         broadcastUpdate(io, leagueCode, league);
@@ -347,9 +363,24 @@ module.exports = (io, socket, data, supabase) => {
         if (!league || league.state !== 'LIVE') return;
         if (league.bidHistory.length === 0) return;
 
+        const undoneBidderName = league.currentBid.holderName;
+
         // Revert to previous bid
         const previousBid = league.bidHistory.pop();
         league.currentBid = previousBid;
+
+        // Give turn to the captain whose bid was undone
+        if (undoneBidderName) {
+            league.activeTurn = undoneBidderName;
+            if (league.passedTeams) {
+                league.passedTeams = league.passedTeams.filter(name => name !== undoneBidderName);
+            }
+        } else {
+            // Revert to original starter
+            if (league.biddingOrder && league.biddingOrder.length > 0) {
+                league.activeTurn = league.biddingOrder[league.roundRobinStartIndex % league.biddingOrder.length];
+            }
+        }
 
         // Log Activity
         league.activityLog.unshift({ type: 'UNDO', text: `⚠️ Previous Bid UNDONE by Admin` });
@@ -372,9 +403,25 @@ module.exports = (io, socket, data, supabase) => {
         league.bidHistory = [];
         league.passedTeams = []; // Allow everyone to bid again
 
-        // Reset turn to the original starter for this player
-        if (league.biddingOrder.length > 0) {
-            league.activeTurn = league.biddingOrder[league.roundRobinStartIndex % league.biddingOrder.length];
+        // Reset turn to the original starter for this player, skipping full squads
+        if (league.biddingOrder && league.biddingOrder.length > 0) {
+            let foundActiveTurn = false;
+            let count = 0;
+            let checkIndex = league.roundRobinStartIndex;
+            while (!foundActiveTurn && count < league.biddingOrder.length) {
+                const nextTeamName = league.biddingOrder[checkIndex % league.biddingOrder.length];
+                const team = league.teams.find(t => t.name === nextTeamName);
+                if (team && team.squad.length < league.config.playersPerTeam) {
+                    league.activeTurn = nextTeamName;
+                    foundActiveTurn = true;
+                } else {
+                    checkIndex++;
+                }
+                count++;
+            }
+            if (!foundActiveTurn) {
+                league.activeTurn = null;
+            }
         }
 
         // Log Activity
@@ -514,7 +561,7 @@ module.exports = (io, socket, data, supabase) => {
         await saveSnapshot(league);
 
         // Advance Turn
-        findNextTurn(league);
+        await findNextTurn(league, leagueCode);
 
         broadcastUpdate(io, leagueCode, league);
     });
@@ -522,42 +569,7 @@ module.exports = (io, socket, data, supabase) => {
     // --- SOLD ---
     socket.on('SOLD', async ({ leagueCode }) => {
         const league = data.leagues.get(leagueCode);
-        if (!league || !league.currentBid.holderName) return;
-        if (!league.currentPlayer || league.currentPlayer.status === 'SOLD') return;
-
-        const team = league.teams.find(t => t.name === league.currentBid.holderName);
-        if (!team) return;
-        const player = league.currentPlayer;
-
-        // Transact
-        team.budget -= league.currentBid.amount;
-        player.status = 'SOLD';
-        player.soldTo = team.name;
-        player.soldAt = league.currentBid.amount;
-
-        team.squad.push({ ...player });
-
-        // Log Activity
-        league.activityLog.unshift({ type: 'SOLD', text: `${player.name} SOLD to ${team.name} for ${league.currentBid.amount} Th` });
-
-        console.log(`[${leagueCode}][SOLD] ${player.name} -> ${team.name} (${league.currentBid.amount})`);
-        await saveSnapshot(league);
-
-        // Remove from unpicked (it was already popped, but just ensuring status is updated in main list too)
-        const mainListPlayer = league.players.find(p => p.id === player.id);
-        if (mainListPlayer) {
-            mainListPlayer.status = 'SOLD';
-            mainListPlayer.soldTo = team.name;
-            mainListPlayer.soldAt = league.currentBid.amount;
-        }
-
-        io.to(leagueCode).emit('PLAYER_SOLD', {
-            player: player,
-            winner: team.name,
-            amount: league.currentBid.amount
-        });
-
-        broadcastUpdate(io, leagueCode, league);
+        await executeSoldTransaction(league, leagueCode);
     });
 
     // --- UNSOLD / PASS ---
@@ -750,6 +762,45 @@ module.exports = (io, socket, data, supabase) => {
         console.log(`User disconnected: ${socket.id} (IP: ${ip})`);
     });
 
+    async function executeSoldTransaction(league, leagueCode) {
+        if (!league || !league.currentBid.holderName) return;
+        if (!league.currentPlayer || league.currentPlayer.status === 'SOLD') return;
+
+        const team = league.teams.find(t => t.name === league.currentBid.holderName);
+        if (!team) return;
+        const player = league.currentPlayer;
+
+        // Transact
+        team.budget -= league.currentBid.amount;
+        player.status = 'SOLD';
+        player.soldTo = team.name;
+        player.soldAt = league.currentBid.amount;
+
+        team.squad.push({ ...player });
+
+        // Log Activity
+        league.activityLog.unshift({ type: 'SOLD', text: `${player.name} SOLD to ${team.name} for ${league.currentBid.amount} Th` });
+
+        console.log(`[${leagueCode}][SOLD] ${player.name} -> ${team.name} (${league.currentBid.amount})`);
+        await saveSnapshot(league);
+
+        // Remove from unpicked (it was already popped, but just ensuring status is updated in main list too)
+        const mainListPlayer = league.players.find(p => p.id === player.id);
+        if (mainListPlayer) {
+            mainListPlayer.status = 'SOLD';
+            mainListPlayer.soldTo = team.name;
+            mainListPlayer.soldAt = league.currentBid.amount;
+        }
+
+        io.to(leagueCode).emit('PLAYER_SOLD', {
+            player: player,
+            winner: team.name,
+            amount: league.currentBid.amount
+        });
+
+        broadcastUpdate(io, leagueCode, league);
+    }
+
     function broadcastUpdate(io, leagueCode, league) {
         io.to(leagueCode).emit('LEAGUE_UPDATE', {
             code: league.code,
@@ -789,9 +840,22 @@ module.exports = (io, socket, data, supabase) => {
         league.bidHistory = []; // Reset history for new player
         league.passedTeams = []; // Reset passed teams for new player
 
-        // Round Robin: Rotate starting team
-        league.roundRobinStartIndex = (league.roundRobinStartIndex + 1) % league.biddingOrder.length;
-        league.activeTurn = league.biddingOrder[league.roundRobinStartIndex];
+        // Round Robin: Rotate starting team, skipping any captains with full squads
+        let foundActiveTurn = false;
+        let loopCount = 0;
+        while (!foundActiveTurn && loopCount < league.biddingOrder.length) {
+            league.roundRobinStartIndex = (league.roundRobinStartIndex + 1) % league.biddingOrder.length;
+            const nextTeamName = league.biddingOrder[league.roundRobinStartIndex];
+            const team = league.teams.find(t => t.name === nextTeamName);
+            if (team && team.squad.length < league.config.playersPerTeam) {
+                league.activeTurn = nextTeamName;
+                foundActiveTurn = true;
+            }
+            loopCount++;
+        }
+        if (!foundActiveTurn) {
+            league.activeTurn = null;
+        }
 
         // Log Activity
         league.activityLog.unshift({ type: 'NEW', text: `${nextP.name} is available. TURN: ${league.activeTurn}` });
@@ -827,8 +891,29 @@ module.exports = (io, socket, data, supabase) => {
         ];
     }
 
-    function findNextTurn(league) {
+    async function findNextTurn(league, leagueCode) {
         if (!league.biddingOrder || league.biddingOrder.length === 0) return;
+
+        let eligibleTeamsCount = 0;
+        let lastEligibleTeam = null;
+
+        for (const team of league.teams) {
+            if (league.passedTeams.includes(team.name)) continue;
+            const minNeed = league.currentBid.amount > 0 ? league.currentBid.amount + 1 : league.config.basePrice;
+            if (team.budget < minNeed) continue;
+            if (team.squad.length >= league.config.playersPerTeam) continue;
+
+            eligibleTeamsCount++;
+            lastEligibleTeam = team;
+        }
+
+        if (eligibleTeamsCount === 0 || (eligibleTeamsCount === 1 && league.currentBid.holderName && lastEligibleTeam && lastEligibleTeam.name === league.currentBid.holderName)) {
+            league.activeTurn = null;
+            if (league.currentBid.holderName) {
+                await executeSoldTransaction(league, leagueCode);
+            }
+            return;
+        }
 
         const currentIndex = league.biddingOrder.indexOf(league.activeTurn);
         const orderLength = league.biddingOrder.length;

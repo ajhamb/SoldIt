@@ -151,6 +151,17 @@ function App() {
 
     socket.on('ADMIN_RESTORE', (state) => {
       setLeagueState(state);
+      if (state && state.code) {
+        setLeagueCode(state.code);
+        const session = localStorage.getItem('auction_session');
+        if (session) {
+          try {
+            const parsed = JSON.parse(session);
+            parsed.leagueCode = state.code;
+            localStorage.setItem('auction_session', JSON.stringify(parsed));
+          } catch (e) {}
+        }
+      }
     });
 
     socket.on('SUPER_ADMIN_RESTORE', (leagues) => {
