@@ -14,7 +14,7 @@ function App() {
   const [leagueCode, setLeagueCode] = useState('');
   const [leagueState, setLeagueState] = useState(null); // Entire league object
   const [allLeagues, setAllLeagues] = useState([]); // All active leagues (Super Admin only)
-  const [isConnected, setIsConnected] = useState(socket.connected);
+  const [isConnected, setIsConnected] = useState(true);
   const [user, setUser] = useState(null);
   const [authInitialized, setAuthInitialized] = useState(!supabase);
 
@@ -59,21 +59,22 @@ function App() {
 
   // 1. Connection status listeners (runs immediately on mount)
   useEffect(() => {
-    setIsConnected(socket.connected);
-
     const onConnect = () => setIsConnected(true);
     const onDisconnect = () => setIsConnected(false);
+    const onConnectError = () => setIsConnected(false);
     const handleUnload = () => {
       window.isLoggingOut = true;
     };
 
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
+    socket.on('connect_error', onConnectError);
     window.addEventListener('beforeunload', handleUnload);
 
     return () => {
       socket.off('connect', onConnect);
       socket.off('disconnect', onDisconnect);
+      socket.off('connect_error', onConnectError);
       window.removeEventListener('beforeunload', handleUnload);
     };
   }, []);
