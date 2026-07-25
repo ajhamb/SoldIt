@@ -41,6 +41,44 @@ export default function SuperAdminDashboard({ allLeagues = [], socket }) {
         }
     };
 
+    const exportRosterToCSV = (league) => {
+        if (!league || !league.players) return;
+        const headers = ['Player Name', 'Category', 'Base Price', 'Status', 'Sold Amount', 'Purchased By'];
+        const rows = league.players.map(p => [
+            `"${(p.name || '').replace(/"/g, '""')}"`,
+            `"${(p.category || '').replace(/"/g, '""')}"`,
+            p.basePrice || 0,
+            p.status || 'WAITING',
+            p.soldPrice || p.soldAt || '-',
+            `"${(p.teamName || p.soldTo || '-').replace(/"/g, '""')}"`
+        ]);
+        const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `${league.code}_player_roster.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const exportLogsToTXT = (league) => {
+        if (!league || !league.activityLog) return;
+        const logLines = league.activityLog.map(log => `[${log.time || 'LOG'}] ${log.text || ''}`);
+        const txtContent = logLines.join('\n');
+        const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `${league.code}_activity_logs.txt`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     const stateColors = {
         WAITING: '#f59e0b',
         LIVE: '#10b981',
@@ -402,25 +440,34 @@ export default function SuperAdminDashboard({ allLeagues = [], socket }) {
                         {/* TAB 2: PLAYERS ROSTER */}
                         {modalTab === 'PLAYERS' && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
-                                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                                    <span style={{ fontSize: '0.8rem', color: '#888' }}>Filter:</span>
-                                    {['ALL', 'SOLD', 'UNSOLD', 'WAITING'].map(f => (
-                                        <button
-                                            key={f}
-                                            style={{
-                                                padding: '0.2rem 0.6rem',
-                                                fontSize: '0.75rem',
-                                                borderRadius: '4px',
-                                                background: playerFilter === f ? '#333' : 'transparent',
-                                                color: playerFilter === f ? 'var(--primary)' : '#888',
-                                                border: `1px solid ${playerFilter === f ? 'var(--primary)' : '#444'}`,
-                                                cursor: 'pointer'
-                                            }}
-                                            onClick={() => setPlayerFilter(f)}
-                                        >
-                                            {f}
-                                        </button>
-                                    ))}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                        <span style={{ fontSize: '0.8rem', color: '#888' }}>Filter:</span>
+                                        {['ALL', 'SOLD', 'UNSOLD', 'WAITING'].map(f => (
+                                            <button
+                                                key={f}
+                                                style={{
+                                                    padding: '0.2rem 0.6rem',
+                                                    fontSize: '0.75rem',
+                                                    borderRadius: '4px',
+                                                    background: playerFilter === f ? '#333' : 'transparent',
+                                                    color: playerFilter === f ? 'var(--primary)' : '#888',
+                                                    border: `1px solid ${playerFilter === f ? 'var(--primary)' : '#444'}`,
+                                                    cursor: 'pointer'
+                                                }}
+                                                onClick={() => setPlayerFilter(f)}
+                                            >
+                                                {f}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <button
+                                        onClick={() => exportRosterToCSV(selectedLeague)}
+                                        className="btn btn-primary"
+                                        style={{ padding: '0.3rem 0.8rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                                    >
+                                        📥 Export Roster to CSV
+                                    </button>
                                 </div>
 
                                 <div style={{ maxHeight: '280px', overflowY: 'auto', border: '1px solid #333', borderRadius: '4px' }}>
@@ -468,16 +515,27 @@ export default function SuperAdminDashboard({ allLeagues = [], socket }) {
 
                         {/* TAB 3: ACTIVITY LOGS */}
                         {modalTab === 'LOGS' && (
-                            <div style={{ maxHeight: '280px', overflowY: 'auto', background: '#090d16', padding: '0.8rem', borderRadius: '6px', border: '1px solid #222', fontSize: '0.8rem', fontFamily: 'monospace', color: '#34d399' }}>
-                                {(!selectedLeague.activityLog || selectedLeague.activityLog.length === 0) ? (
-                                    <div style={{ color: '#666', textStyle: 'italic' }}>No activity logged yet for this league.</div>
-                                ) : (
-                                    selectedLeague.activityLog.map((log, i) => (
-                                        <div key={i} style={{ borderBottom: '1px solid #1e293b', padding: '0.3rem 0' }}>
-                                            [{log.time || 'LOG'}] {log.text}
-                                        </div>
-                                    ))
-                                )}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                    <button
+                                        onClick={() => exportLogsToTXT(selectedLeague)}
+                                        className="btn btn-primary"
+                                        style={{ padding: '0.3rem 0.8rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                                    >
+                                        📥 Export Logs to TXT
+                                    </button>
+                                </div>
+                                <div style={{ maxHeight: '280px', overflowY: 'auto', background: '#090d16', padding: '0.8rem', borderRadius: '6px', border: '1px solid #222', fontSize: '0.8rem', fontFamily: 'monospace', color: '#34d399' }}>
+                                    {(!selectedLeague.activityLog || selectedLeague.activityLog.length === 0) ? (
+                                        <div style={{ color: '#666', textStyle: 'italic' }}>No activity logged yet for this league.</div>
+                                    ) : (
+                                        selectedLeague.activityLog.map((log, i) => (
+                                            <div key={i} style={{ borderBottom: '1px solid #1e293b', padding: '0.3rem 0' }}>
+                                                [{log.time || 'LOG'}] {log.text}
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
                             </div>
                         )}
 

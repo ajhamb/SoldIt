@@ -13,15 +13,27 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
     const [showSuccess, setShowSuccess] = useState(false);
 
     const [inviteEmail, setInviteEmail] = useState('');
+    const [inviteRole, setInviteRole] = useState('CAPTAIN');
+    const [newTeamCount, setNewTeamCount] = useState(0);
 
     const handleInvite = (e) => {
         e.preventDefault();
         if (!inviteEmail) return;
         const cleanEmail = inviteEmail.trim().toLowerCase();
         setInviteEmail('');
-        socket.emit('INVITE_CAPTAIN', { leagueCode, email: cleanEmail }, (response) => {
+        socket.emit('INVITE_CAPTAIN', { leagueCode, email: cleanEmail, role: inviteRole }, (response) => {
             if (response && response.error) {
                 alert(response.error);
+            }
+        });
+    };
+
+    const handleUpdateTeamCount = () => {
+        socket.emit('UPDATE_TEAM_COUNT', { leagueCode, teamCount: newTeamCount }, (response) => {
+            if (response && response.error) {
+                alert(response.error);
+            } else {
+                alert("Team count updated successfully!");
             }
         });
     };
@@ -36,6 +48,12 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
             setShowSuccess(true);
         }
     }, [leagueState?.isNew]);
+
+    useEffect(() => {
+        if (leagueState?.config?.teamCount) {
+            setNewTeamCount(leagueState.config.teamCount);
+        }
+    }, [leagueState?.config?.teamCount]);
 
     if (!leagueState) return <div className="container">Loading Auction Room...</div>;
 
@@ -129,6 +147,19 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
                                     </strong>
                                 </div>
                                 {role === 'ADMIN' && (
+                                    <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center' }}>
+                                        <label style={{ fontSize: '0.9rem', color: '#aaa' }}>Adjust Teams Count:</label>
+                                        <input
+                                            type="number"
+                                            min={teams.length || 1}
+                                            value={newTeamCount}
+                                            onChange={e => setNewTeamCount(parseInt(e.target.value) || 0)}
+                                            style={{ width: '70px', padding: '0.3rem', borderRadius: '4px', border: '1px solid #444', background: '#222', color: '#fff', textAlign: 'center' }}
+                                        />
+                                        <button onClick={handleUpdateTeamCount} className="btn-secondary" style={{ padding: '0.3rem 0.8rem', fontSize: '0.8rem' }}>Update</button>
+                                    </div>
+                                )}
+                                {role === 'ADMIN' && (
                                     <div style={{ marginTop: '2rem' }}>
                                         <button
                                             id="start-auction-btn"
@@ -150,16 +181,39 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
 
                                 {role === 'ADMIN' && (
                                     <div className="card" style={{ marginTop: '2rem', padding: '1.5rem', background: 'rgba(0,0,0,0.2)', border: '1px solid #333', textAlign: 'left', width: '100%', maxWidth: '500px', margin: '2rem auto' }}>
-                                        <h3 style={{ margin: '0 0 1rem 0', color: 'var(--primary)' }}>Invite Captains by Email</h3>
-                                        <form onSubmit={handleInvite} style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
+                                        <h3 style={{ margin: '0 0 1rem 0', color: 'var(--primary)' }}>Invite Co-Admins & Captains</h3>
+                                        
+                                        <div style={{ marginBottom: '1.2rem', padding: '0.6rem 0.8rem', background: 'rgba(255,255,255,0.02)', borderRadius: '4px', border: '1px solid #333', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                            <span style={{ color: '#aaa' }}>Invite Link: <strong style={{ color: 'var(--secondary)', wordBreak: 'break-all' }}>{`${window.location.origin}/?joinCode=${leagueCode}`}</strong></span>
+                                            <button
+                                                onClick={() => {
+                                                    navigator.clipboard.writeText(`${window.location.origin}/?joinCode=${leagueCode}`);
+                                                    alert("Invite link copied to clipboard!");
+                                                }}
+                                                className="btn-secondary"
+                                                style={{ padding: '0.2rem 0.6rem', fontSize: '0.75rem', cursor: 'pointer' }}
+                                            >
+                                                📋 Copy Link
+                                            </button>
+                                        </div>
+
+                                        <form onSubmit={handleInvite} style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
                                             <input 
                                                 type="email" 
                                                 placeholder="captain@example.com" 
                                                 value={inviteEmail} 
                                                 onChange={e => setInviteEmail(e.target.value)} 
-                                                style={{ flex: 1, padding: '0.6rem', borderRadius: '4px', border: '1px solid #444', background: 'rgba(0,0,0,0.4)', color: '#fff', outline: 'none' }} 
+                                                style={{ flex: 1, minWidth: '180px', padding: '0.6rem', borderRadius: '4px', border: '1px solid #444', background: 'rgba(0,0,0,0.4)', color: '#fff', outline: 'none' }} 
                                                 required 
                                             />
+                                            <select
+                                                value={inviteRole}
+                                                onChange={e => setInviteRole(e.target.value)}
+                                                style={{ padding: '0.6rem', borderRadius: '4px', border: '1px solid #444', background: 'rgba(0,0,0,0.4)', color: '#fff', outline: 'none', cursor: 'pointer' }}
+                                            >
+                                                <option value="CAPTAIN">Captain</option>
+                                                <option value="ADMIN">Admin</option>
+                                            </select>
                                             <button className="btn btn-primary" type="submit" style={{ padding: '0.6rem 1.2rem' }}>Invite</button>
                                         </form>
 
@@ -170,7 +224,7 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '150px', overflowY: 'auto' }}>
                                                 {(invitations || []).map(invite => (
                                                     <div key={invite.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '0.4rem 0.6rem', borderRadius: '4px', fontSize: '0.85rem' }}>
-                                                        <span style={{ color: '#ddd' }}>{invite.email}</span>
+                                                        <span style={{ color: '#ddd' }}>{invite.email} ({invite.role || 'CAPTAIN'})</span>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                                             <span style={{ 
                                                                 padding: '0.1rem 0.4rem', 

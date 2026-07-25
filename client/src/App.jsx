@@ -63,13 +63,18 @@ function App() {
 
     const onConnect = () => setIsConnected(true);
     const onDisconnect = () => setIsConnected(false);
+    const handleUnload = () => {
+      window.isLoggingOut = true;
+    };
 
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
+    window.addEventListener('beforeunload', handleUnload);
 
     return () => {
       socket.off('connect', onConnect);
       socket.off('disconnect', onDisconnect);
+      window.removeEventListener('beforeunload', handleUnload);
     };
   }, []);
 
@@ -174,6 +179,7 @@ function App() {
   }, [authInitialized]);
 
   const handleExitLeague = () => {
+    window.isLoggingOut = true;
     localStorage.removeItem('auction_session');
     setRole(null);
     setLeagueState(null);
@@ -183,7 +189,7 @@ function App() {
   if (!role) {
     return (
       <>
-        {!isConnected && (
+        {!isConnected && !window.isLoggingOut && (
           <div style={{
             position: 'fixed', top: 0, left: 0, right: 0,
             background: '#ef4444', color: '#fff', textAlign: 'center',
@@ -201,7 +207,7 @@ function App() {
   if (role === 'SUPER_ADMIN') {
     return (
       <div className="app-container">
-        {!isConnected && (
+        {!isConnected && !window.isLoggingOut && (
           <div style={{
             position: 'fixed', top: 0, left: 0, right: 0,
             background: '#ef4444', color: '#fff', textAlign: 'center',
@@ -221,7 +227,7 @@ function App() {
 
   return (
     <div className="app-container">
-      {!isConnected && (
+      {!isConnected && !window.isLoggingOut && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0,
           background: '#ef4444', color: '#fff', textAlign: 'center',

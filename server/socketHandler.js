@@ -3,6 +3,14 @@ const path = require('path');
 
 module.exports = (io, socket, data, supabase) => {
 
+    function isSocketAdmin(socket, league) {
+        if (!league) return false;
+        const cleanEmail = socket.email || socket.handshake.query.email?.trim().toLowerCase();
+        const isOwner = league.adminEmail && league.adminEmail.toLowerCase() === cleanEmail;
+        const isCoAdmin = league.invitations?.some(inv => inv.email === cleanEmail && inv.role === 'ADMIN');
+        return socket.id === league.adminId || isOwner || isCoAdmin;
+    }
+
     // --- CREATE / JOIN LEAGUE ---
     // Now accepts detailed settings for Admin creation
     socket.on('JOIN_LEAGUE', async ({ leagueCode, name, role, settings }) => {
@@ -87,14 +95,37 @@ module.exports = (io, socket, data, supabase) => {
                     invitations: []
                 };
                 data.leagues.set(leagueCode, league);
+                socket.email = adminEmail;
                 console.log(`[${leagueCode}][CREATE] League ${league.name} created by admin ${adminEmail}`);
                 socket.emit('ADMIN_RESTORE', { ...league, isNew: true });
             } else {
-                // Rejoin as admin
+                // Rejoin as admin (or join as co-admin)
                 const clientEmail = settings?.email?.trim().toLowerCase();
-                if (!clientEmail || clientEmail !== league.adminEmail) {
+                const isOwner = clientEmail && clientEmail === league.adminEmail;
+                const isCoAdmin = league.invitations?.some(inv => inv.email === clientEmail && inv.role === 'ADMIN');
+                if (!isOwner && !isCoAdmin) {
                     socket.emit('ERROR', { message: "You are not the designated Admin of this league!" });
                     return;
+                }
+
+                socket.email = clientEmail;
+                
+                // Mark co-admin invitation as JOINED
+                if (isCoAdmin) {
+                    const invite = league.invitations.find(inv => inv.email === clientEmail);
+                    if (invite) {
+                        invite.status = 'JOINED';
+                        if (supabase) {
+                            supabase
+                                .from('invitations')
+                                .update({ status: 'JOINED' })
+                                .eq('league_code', leagueCode)
+                                .eq('email', clientEmail)
+                                .then(({ error }) => {
+                                    if (error) console.error("Supabase sync invitation update failed:", error);
+                                });
+                        }
+                    }
                 }
 
                 league.adminId = socket.id;
@@ -121,6 +152,7 @@ module.exports = (io, socket, data, supabase) => {
                 return;
             }
 
+            socket.email = cleanEmail;
             invite.status = 'JOINED';
 
             // Sync joined status to DB
@@ -203,13 +235,48 @@ module.exports = (io, socket, data, supabase) => {
         const league = data.leagues.get(leagueCode);
         if (!league || league.state !== 'LIVE') return;
         
-        // Ensure sender is the designated Admin
-        if (league.adminEmail !== socket.handshake.query.email?.trim().toLowerCase() && league.adminId !== socket.id) {
+        if (!isSocketAdmin(socket, league)) {
             return;
         }
 
         pickNextPlayer(league, io, leagueCode);
         broadcastUpdate(io, leagueCode, league);
+    });
+
+    socket.on('UPDATE_TEAM_COUNT', async ({ leagueCode, teamCount }, callback) => {
+        const league = data.leagues.get(leagueCode);
+        if (!league) {
+            if (callback) callback({ error: "League not found!" });
+            return;
+        }
+
+        if (!isSocketAdmin(socket, league)) {
+            if (callback) callback({ error: "Unauthorized: Only an Admin can edit settings." });
+            return;
+        }
+
+        if (league.state !== 'WAITING') {
+            if (callback) callback({ error: "Team count can only be changed before the auction has started!" });
+            return;
+        }
+
+        const count = parseInt(teamCount);
+        if (isNaN(count) || count < 1) {
+            if (callback) callback({ error: "Invalid team count!" });
+            return;
+        }
+
+        if (count < league.teams.length) {
+            if (callback) callback({ error: `Cannot set team count to ${count} because ${league.teams.length} teams have already joined!` });
+            return;
+        }
+
+        league.config.teamCount = count;
+        console.log(`[${leagueCode}][UPDATE_TEAM_COUNT] Team count updated to ${count}`);
+        
+        await saveSnapshot(league);
+        broadcastUpdate(io, leagueCode, league);
+        if (callback) callback({ success: true });
     });
 
     // --- PLACE BID ---
@@ -320,11 +387,10 @@ module.exports = (io, socket, data, supabase) => {
         broadcastUpdate(io, leagueCode, league);
     });
 
-    // --- MANUAL ASSIGN (ADMIN REASSIGNMENT) ---
     socket.on('ADMIN_ASSIGN_PLAYER', async ({ leagueCode, playerId, teamName, price }) => {
         const league = data.leagues.get(leagueCode);
         if (!league) return;
-        if (socket.id !== league.adminId) return;
+        if (!isSocketAdmin(socket, league)) return;
 
         const player = league.players.find(p => p.id === playerId);
         const targetTeam = league.teams.find(t => t.name === teamName);
@@ -394,11 +460,10 @@ module.exports = (io, socket, data, supabase) => {
         broadcastUpdate(io, leagueCode, league);
     });
 
-    // --- MANUAL UNASSIGN (ADMIN RELEASE) ---
     socket.on('ADMIN_UNASSIGN_PLAYER', async ({ leagueCode, playerId }) => {
         const league = data.leagues.get(leagueCode);
         if (!league) return;
-        if (socket.id !== league.adminId) return;
+        if (!isSocketAdmin(socket, league)) return;
 
         const player = league.players.find(p => p.id === playerId);
         if (!player) return;
@@ -549,16 +614,20 @@ module.exports = (io, socket, data, supabase) => {
         broadcastUpdate(io, leagueCode, league);
     });
 
-    socket.on('INVITE_CAPTAIN', async ({ leagueCode, email }, callback) => {
+    socket.on('INVITE_CAPTAIN', async ({ leagueCode, email, role = 'CAPTAIN' }, callback) => {
         const league = data.leagues.get(leagueCode);
         if (!league) {
             if (callback) callback({ error: "League not found!" });
             return;
         }
 
-        const isAdmin = socket.id === league.adminId;
+        const senderEmail = socket.handshake.query.email?.trim().toLowerCase();
+        const isOwner = league.adminEmail && league.adminEmail.toLowerCase() === senderEmail;
+        const isCoAdmin = league.invitations?.some(inv => inv.email.toLowerCase() === senderEmail && inv.role === 'ADMIN');
+        const isAdmin = socket.id === league.adminId || isOwner || isCoAdmin;
+
         if (!isAdmin) {
-            if (callback) callback({ error: "Unauthorized: Only the Admin can invite captains." });
+            if (callback) callback({ error: "Unauthorized: Only an Admin can invite captains." });
             return;
         }
 
@@ -572,7 +641,7 @@ module.exports = (io, socket, data, supabase) => {
         }
 
         // Add invitation
-        league.invitations.push({ email: cleanEmail, status: 'PENDING' });
+        league.invitations.push({ email: cleanEmail, status: 'PENDING', role: role });
 
         // Sync insert to DB
         if (supabase) {
@@ -584,7 +653,7 @@ module.exports = (io, socket, data, supabase) => {
                 });
         }
 
-        console.log(`[${leagueCode}][INVITE] Invited Captain: ${cleanEmail}`);
+        console.log(`[${leagueCode}][INVITE] Invited ${role}: ${cleanEmail}`);
         await saveSnapshot(league);
         broadcastUpdate(io, leagueCode, league);
         if (callback) callback({ success: true });
@@ -663,7 +732,9 @@ module.exports = (io, socket, data, supabase) => {
         const invitedLeagues = [];
 
         for (const league of data.leagues.values()) {
-            if (league.adminEmail && league.adminEmail.toLowerCase() === cleanEmail) {
+            const isOwner = league.adminEmail && league.adminEmail.toLowerCase() === cleanEmail;
+            const isCoAdmin = league.invitations?.some(inv => inv.email.toLowerCase() === cleanEmail && inv.role === 'ADMIN');
+            if (isOwner || isCoAdmin) {
                 adminLeagues.push(league);
             } else if (league.invitations?.some(inv => inv.email.toLowerCase() === cleanEmail)) {
                 invitedLeagues.push(league);

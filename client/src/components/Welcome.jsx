@@ -63,6 +63,26 @@ export default function Welcome({ onJoin, user, socket }) {
         };
     }, [user]);
 
+    useEffect(() => {
+        if (loadingLeagues) return;
+        const joinCode = new URLSearchParams(window.location.search).get('joinCode');
+        if (!joinCode) return;
+
+        const matchingAdmin = adminLeagues.find(l => l.code === joinCode.toUpperCase());
+        if (matchingAdmin) {
+            window.history.replaceState({}, document.title, window.location.pathname);
+            handleAdminEnter(matchingAdmin);
+            return;
+        }
+
+        const matchingInvited = invitedLeagues.find(l => l.code === joinCode.toUpperCase());
+        if (matchingInvited) {
+            window.history.replaceState({}, document.title, window.location.pathname);
+            handleCaptainEnter(matchingInvited);
+            return;
+        }
+    }, [adminLeagues, invitedLeagues, loadingLeagues]);
+
     // Google Login/Logout handlers
     const handleGoogleLogin = async () => {
         if (!supabase) return;
@@ -76,6 +96,7 @@ export default function Welcome({ onJoin, user, socket }) {
     };
 
     const handleLogout = async () => {
+        window.isLoggingOut = true;
         localStorage.removeItem('e2e_mock_user');
         localStorage.removeItem('auction_session');
         if (supabase) {
@@ -384,6 +405,11 @@ export default function Welcome({ onJoin, user, socket }) {
                                                             Code: <span style={{ color: 'var(--secondary)' }}>{l.code}</span>
                                                             {myTeam && <span style={{ color: '#34d399' }}> | Team: {myTeam.name}</span>}
                                                         </div>
+                                                        {l.adminEmail && (
+                                                            <div style={{ fontSize: '0.75rem', color: '#aaa', marginTop: '0.2rem' }}>
+                                                                Admin: <span style={{ fontStyle: 'italic' }}>{l.adminEmail}</span>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                     <button className="btn enter-league-btn" onClick={() => handleCaptainEnter(l)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', background: 'transparent', border: '2px solid var(--secondary)', color: 'var(--secondary)' }}>
                                                         {myTeam ? 'Rejoin' : 'Join Draft'}
