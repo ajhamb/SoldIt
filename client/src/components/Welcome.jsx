@@ -11,6 +11,7 @@ export default function Welcome({ onJoin, user, socket }) {
     const [invitedLeagues, setInvitedLeagues] = useState([]);
     const [loadingLeagues, setLoadingLeagues] = useState(true);
     const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+    const [showProfileDropdown, setShowProfileDropdown] = useState(false);
 
 
 
@@ -232,180 +233,299 @@ export default function Welcome({ onJoin, user, socket }) {
         borderRadius: '4px', background: 'rgba(0,0,0,0.3)', border: '1px solid #444', color: '#fff'
     };
 
-    // --- GATEKEEPER VIEW: Login Enforced ---
-    if (!user) {
-        return (
-            <div className="container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', textAlign: 'center', padding: '2rem' }}>
-                <h1 style={{ fontSize: '4.5rem', color: 'var(--primary)', marginBottom: '1rem', textShadow: '0 0 25px rgba(255, 215, 0, 0.4)' }}>SoldIt</h1>
-                <p className="text-muted" style={{ marginBottom: '3rem', fontSize: '1.25rem' }}>Real-time IPL Style Draft & Auction</p>
-                
-                <div className="card" style={{ maxWidth: '400px', width: '100%', padding: '2.5rem', textAlign: 'center' }}>
-                    <h2 style={{ marginBottom: '1.5rem', fontSize: '1.5rem' }}>Welcome to SoldIt</h2>
-                    
-                    {supabase ? (
-                        <>
-                            <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '2rem' }}>Sign in with Google to access your leagues, manage drafts, and bid in real-time.</p>
-                            <button id="google-login-btn" className="btn" style={{ width: '100%', background: '#fff', color: '#000', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.8rem', border: 'none', padding: '1rem', borderRadius: '30px', cursor: 'pointer', fontSize: '1.05rem', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }} onClick={handleGoogleLogin}>
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05"/>
-                                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335"/>
-                                </svg>
-                                Sign in with Google
-                            </button>
-                        </>
-                    ) : (
-                        <form onSubmit={handleMockLogin}>
-                            <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '1.5rem' }}>Offline Mode: Enter your email to simulate authenticating and access the dashboard.</p>
-                            <input 
-                                id="offline-email-input"
-                                type="email" 
-                                value={mockEmailInput} 
-                                onChange={e => setMockEmailInput(e.target.value)} 
-                                placeholder="e.g. admin@example.com" 
-                                style={inputStyle} 
-                                required 
-                            />
-                            <button id="offline-signin-btn" className="btn btn-primary" type="submit" style={{ width: '100%', padding: '0.8rem', borderRadius: '30px' }}>
-                                Sign In (Offline Dev Mode)
-                            </button>
-                        </form>
-                    )}
-                </div>
-            </div>
-        );
-    }
-
     return (
         <div className="container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', textAlign: 'center', padding: '2rem', position: 'relative' }}>
-            {/* --- USER WIDGET (TOP RIGHT) --- */}
-            {user && (
-                <div style={{ position: 'fixed', top: '1.5rem', right: '1.5rem', display: 'flex', gap: '1rem', alignItems: 'center', zIndex: 1000 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', background: 'rgba(0,0,0,0.6)', padding: '0.5rem 1rem', borderRadius: '30px', border: '1px solid #444', backdropFilter: 'blur(4px)' }}>
-                        {user.user_metadata?.avatar_url && (
-                            <img src={user.user_metadata.avatar_url} alt="User avatar" style={{ width: '24px', height: '24px', borderRadius: '50%' }} />
-                        )}
-                        <span style={{ fontSize: '0.85rem', color: '#ccc' }}>{user.email}</span>
-                        <button id="signout-btn" className="btn-secondary" style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', border: 'none', background: '#ef4444', borderRadius: '4px', cursor: 'pointer', color: '#fff', fontWeight: 'bold' }} onClick={handleLogout}>
-                            Sign Out
+            
+            {/* --- USER / SIGN IN WIDGET (TOP RIGHT) --- */}
+            <div style={{ position: 'fixed', top: '1.5rem', right: '1.5rem', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', zIndex: 1000 }}>
+                {user ? (
+                    <div style={{ position: 'relative' }}>
+                        <button 
+                            id="profile-dropdown-trigger"
+                            onClick={() => setShowProfileDropdown(!showProfileDropdown)}
+                            style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '0.8rem', 
+                                background: 'rgba(0,0,0,0.6)', 
+                                padding: '0.5rem 1rem', 
+                                borderRadius: '30px', 
+                                border: '1px solid #444', 
+                                backdropFilter: 'blur(4px)',
+                                cursor: 'pointer',
+                                color: '#fff',
+                                outline: 'none'
+                            }}
+                        >
+                            {user.user_metadata?.avatar_url ? (
+                                <img src={user.user_metadata.avatar_url} alt="User avatar" style={{ width: '24px', height: '24px', borderRadius: '50%' }} />
+                            ) : (
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--primary)' }}>
+                                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                                    <circle cx="12" cy="7" r="4"></circle>
+                                </svg>
+                            )}
+                            <span style={{ fontSize: '0.85rem', color: '#ccc' }}>{user.email}</span>
+                            <span style={{ fontSize: '0.75rem', color: '#888' }}>{showProfileDropdown ? '▲' : '▼'}</span>
                         </button>
+
+                        {showProfileDropdown && (
+                            <div className="card" style={{ 
+                                position: 'absolute', 
+                                top: '3rem', 
+                                right: 0, 
+                                width: '200px', 
+                                padding: '1rem', 
+                                background: '#111', 
+                                border: '1px solid #333', 
+                                borderRadius: '8px', 
+                                boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                                zIndex: 1001,
+                                textAlign: 'left'
+                            }}>
+                                <div style={{ fontSize: '0.8rem', color: '#888', marginBottom: '0.8rem' }}>Signed in as:</div>
+                                <div style={{ fontWeight: 'bold', fontSize: '0.85rem', color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: '1rem' }}>{user.email}</div>
+                                <button 
+                                    id="signout-btn" 
+                                    className="btn-secondary" 
+                                    style={{ 
+                                        width: '100%', 
+                                        padding: '0.5rem', 
+                                        fontSize: '0.8rem', 
+                                        border: 'none', 
+                                        background: '#ef4444', 
+                                        borderRadius: '4px', 
+                                        cursor: 'pointer', 
+                                        color: '#fff', 
+                                        fontWeight: 'bold',
+                                        textAlign: 'center'
+                                    }} 
+                                    onClick={() => {
+                                        setShowProfileDropdown(false);
+                                        handleLogout();
+                                    }}
+                                >
+                                    Sign Out
+                                </button>
+                            </div>
+                        )}
                     </div>
-                </div>
-            )}
+                ) : (
+                    <div style={{ position: 'relative' }}>
+                        <button 
+                            id="login-dropdown-trigger"
+                            onClick={() => setShowProfileDropdown(!showProfileDropdown)}
+                            style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '0.6rem', 
+                                background: 'rgba(255,255,255,0.05)', 
+                                padding: '0.5rem 1rem', 
+                                borderRadius: '30px', 
+                                border: '1px solid #444', 
+                                backdropFilter: 'blur(4px)',
+                                cursor: 'pointer',
+                                color: '#fff',
+                                outline: 'none',
+                                transition: 'all 0.2s ease'
+                            }}
+                        >
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#ccc' }}>
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                                <circle cx="12" cy="7" r="4"></circle>
+                            </svg>
+                            <span style={{ fontSize: '0.85rem', color: '#ccc', fontWeight: 'bold' }}>Sign In</span>
+                            <span style={{ fontSize: '0.75rem', color: '#888' }}>{showProfileDropdown ? '▲' : '▼'}</span>
+                        </button>
+
+                        {showProfileDropdown && (
+                            <div className="card" style={{ 
+                                position: 'absolute', 
+                                top: '3rem', 
+                                right: 0, 
+                                width: '280px', 
+                                padding: '1.5rem', 
+                                background: '#111', 
+                                border: '1px solid #333', 
+                                borderRadius: '8px', 
+                                boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                                zIndex: 1001,
+                                textAlign: 'left'
+                            }}>
+                                <h4 style={{ margin: '0 0 1rem 0', fontSize: '1rem', color: '#fff' }}>Sign in to your account</h4>
+                                {supabase ? (
+                                    <button 
+                                        id="google-login-btn" 
+                                        className="btn" 
+                                        style={{ 
+                                            width: '100%', 
+                                            background: '#fff', 
+                                            color: '#000', 
+                                            fontWeight: 'bold', 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            justifyContent: 'center', 
+                                            gap: '0.8rem', 
+                                            border: 'none', 
+                                            padding: '0.75rem', 
+                                            borderRadius: '30px', 
+                                            cursor: 'pointer', 
+                                            fontSize: '0.9rem', 
+                                            boxShadow: '0 4px 12px rgba(0,0,0,0.15)' 
+                                        }} 
+                                        onClick={() => {
+                                            setShowProfileDropdown(false);
+                                            handleGoogleLogin();
+                                        }}
+                                    >
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                                            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                                            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                                            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05"/>
+                                            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335"/>
+                                        </svg>
+                                        Sign in with Google
+                                    </button>
+                                ) : (
+                                    <form onSubmit={(e) => {
+                                        setShowProfileDropdown(false);
+                                        handleMockLogin(e);
+                                    }}>
+                                        <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '1rem', lineHeight: '1.4' }}>Offline Mode: Enter your email to simulate authentication.</p>
+                                        <input 
+                                            id="offline-email-input"
+                                            type="email" 
+                                            value={mockEmailInput} 
+                                            onChange={e => setMockEmailInput(e.target.value)} 
+                                            placeholder="e.g. admin@example.com" 
+                                            style={{ ...inputStyle, padding: '0.6rem', fontSize: '0.85rem' }} 
+                                            required 
+                                        />
+                                        <button id="offline-signin-btn" className="btn btn-primary" type="submit" style={{ width: '100%', padding: '0.6rem', borderRadius: '30px', fontSize: '0.85rem' }}>
+                                            Sign In
+                                        </button>
+                                    </form>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
 
             <h1 style={{ fontSize: '3.5rem', color: 'var(--primary)', marginBottom: '0.5rem', textShadow: '0 0 20px rgba(255, 215, 0, 0.3)' }}>SoldIt</h1>
             <p className="text-muted" style={{ marginBottom: '2rem', fontSize: '1.1rem' }}>Real-time IPL Style Auction</p>
 
-            {/* --- DASHBOARD VIEW (when logged in) --- */}
-            {view === 'MENU' && (
-                <div style={{ width: '100%', maxWidth: '800px', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                    
-                    {/* Action buttons */}
-                    <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-                        <button id="create-league-btn" className="btn btn-primary" onClick={() => setView('CREATE')}>
-                            Create New League
-                        </button>
-                        <button className="btn" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid #444', color: '#888' }} onClick={() => setShowHowTo(true)}>
-                            How To Play?
-                        </button>
-                        {isSuperAdmin && (
-                            <button id="super-admin-menu-btn" className="btn" style={{ background: 'transparent', border: '2px solid #8b5cf6', color: '#a78bfa' }} onClick={() => onJoin(user?.email || 'admin', '', 'SUPER_ADMIN')}>
-                                Super Admin
+            {user ? (
+                // --- DASHBOARD VIEW (when logged in) ---
+                view === 'MENU' && (
+                    <div style={{ width: '100%', maxWidth: '800px', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                        
+                        {/* Action buttons */}
+                        <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+                            <button id="create-league-btn" className="btn btn-primary" onClick={() => setView('CREATE')}>
+                                Create New League
                             </button>
+                            <button className="btn" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid #444', color: '#888' }} onClick={() => setShowHowTo(true)}>
+                                How To Play?
+                            </button>
+                            {isSuperAdmin && (
+                                <button id="super-admin-menu-btn" className="btn" style={{ background: 'transparent', border: '2px solid #8b5cf6', color: '#a78bfa' }} onClick={() => onJoin(user?.email || 'admin', '', 'SUPER_ADMIN')}>
+                                    Super Admin
+                                </button>
+                            )}
+                        </div>
+
+                        {loadingLeagues ? (
+                            <div style={{ color: 'var(--primary)', fontSize: '1.2rem', padding: '2rem' }}>Loading dashboard leagues...</div>
+                        ) : (
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+                                {/* Managed leagues (Admin) */}
+                                <div className="card" style={{ textAlign: 'left', background: 'rgba(0,0,0,0.15)', borderColor: '#333' }}>
+                                    <h3 style={{ borderBottom: '1px solid #333', paddingBottom: '0.5rem', color: 'var(--primary)', marginBottom: '1rem' }}>Leagues You Manage</h3>
+                                    {adminLeagues.length === 0 ? (
+                                        <p className="text-muted" style={{ fontSize: '0.9rem' }}>You haven't created any leagues yet.</p>
+                                    ) : (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '350px', overflowY: 'auto' }}>
+                                            {adminLeagues.map(l => {
+                                                const stateColors = { WAITING: '#f59e0b', LIVE: '#10b981', PAUSED: '#3b82f6', ENDED: '#ef4444' };
+                                                return (
+                                                    <div key={l.code} className="league-card" style={{ padding: '0.8rem', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', border: '1px solid #222', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                        <div>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                                <strong style={{ color: '#fff' }}>{l.name}</strong>
+                                                                <span style={{
+                                                                    padding: '0.15rem 0.4rem',
+                                                                    borderRadius: '4px',
+                                                                    fontSize: '0.65rem',
+                                                                    background: (stateColors[l.state] || '#555') + '22',
+                                                                    color: stateColors[l.state] || '#888',
+                                                                    border: `1px solid ${stateColors[l.state] || '#555'}`,
+                                                                    fontWeight: 'bold'
+                                                                }}>
+                                                                    {l.state || 'WAITING'}
+                                                                </span>
+                                                            </div>
+                                                            <div style={{ fontSize: '0.8rem', color: '#888', marginTop: '0.2rem' }}>Code: <span style={{ color: 'var(--secondary)' }}>{l.code}</span> | Teams: {l.teams?.length || 0}/{l.config?.teamCount || 0}</div>
+                                                        </div>
+                                                        <button className="btn btn-primary enter-league-btn" onClick={() => handleAdminEnter(l)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>Enter</button>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Invited leagues (Captain) */}
+                                <div className="card" style={{ textAlign: 'left', background: 'rgba(0,0,0,0.15)', borderColor: '#333' }}>
+                                    <h3 style={{ borderBottom: '1px solid #333', paddingBottom: '0.5rem', color: 'var(--secondary)', marginBottom: '1rem' }}>Leagues You Participate In</h3>
+                                    {invitedLeagues.length === 0 ? (
+                                        <p className="text-muted" style={{ fontSize: '0.9rem' }}>You haven't been invited to any leagues yet.</p>
+                                    ) : (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '350px', overflowY: 'auto' }}>
+                                            {invitedLeagues.map(l => {
+                                                const myTeam = l.teams?.find(t => t.email?.toLowerCase() === user.email.toLowerCase());
+                                                const stateColors = { WAITING: '#f59e0b', LIVE: '#10b981', PAUSED: '#3b82f6', ENDED: '#ef4444' };
+                                                return (
+                                                    <div key={l.code} className="league-card" style={{ padding: '0.8rem', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', border: '1px solid #222', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                        <div>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                                <strong style={{ color: '#fff' }}>{l.name}</strong>
+                                                                <span style={{
+                                                                    padding: '0.15rem 0.4rem',
+                                                                    borderRadius: '4px',
+                                                                    fontSize: '0.65rem',
+                                                                    background: (stateColors[l.state] || '#555') + '22',
+                                                                    color: stateColors[l.state] || '#888',
+                                                                    border: `1px solid ${stateColors[l.state] || '#555'}`,
+                                                                    fontWeight: 'bold'
+                                                                }}>
+                                                                    {l.state || 'WAITING'}
+                                                                </span>
+                                                            </div>
+                                                            <div style={{ fontSize: '0.8rem', color: '#888', marginTop: '0.2rem' }}>
+                                                                Code: <span style={{ color: 'var(--secondary)' }}>{l.code}</span>
+                                                                {myTeam && <span style={{ color: '#34d399' }}> | Team: {myTeam.name}</span>}
+                                                            </div>
+                                                            {l.adminEmail && (
+                                                                <div style={{ fontSize: '0.75rem', color: '#aaa', marginTop: '0.2rem' }}>
+                                                                    Admin: <span style={{ fontStyle: 'italic' }}>{l.adminEmail}</span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <button className="btn enter-league-btn" onClick={() => handleCaptainEnter(l)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', background: 'transparent', border: '2px solid var(--secondary)', color: 'var(--secondary)' }}>
+                                                            {myTeam ? 'Rejoin' : 'Join Draft'}
+                                                        </button>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         )}
                     </div>
-
-                    {loadingLeagues ? (
-                        <div style={{ color: 'var(--primary)', fontSize: '1.2rem', padding: '2rem' }}>Loading dashboard leagues...</div>
-                    ) : (
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
-                            {/* Managed leagues (Admin) */}
-                            <div className="card" style={{ textAlign: 'left', background: 'rgba(0,0,0,0.15)', borderColor: '#333' }}>
-                                <h3 style={{ borderBottom: '1px solid #333', paddingBottom: '0.5rem', color: 'var(--primary)', marginBottom: '1rem' }}>Leagues You Manage</h3>
-                                {adminLeagues.length === 0 ? (
-                                    <p className="text-muted" style={{ fontSize: '0.9rem' }}>You haven't created any leagues yet.</p>
-                                ) : (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '350px', overflowY: 'auto' }}>
-                                        {adminLeagues.map(l => {
-                                            const stateColors = { WAITING: '#f59e0b', LIVE: '#10b981', PAUSED: '#3b82f6', ENDED: '#ef4444' };
-                                            return (
-                                                <div key={l.code} className="league-card" style={{ padding: '0.8rem', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', border: '1px solid #222', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                    <div>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                                            <strong style={{ color: '#fff' }}>{l.name}</strong>
-                                                            <span style={{
-                                                                padding: '0.15rem 0.4rem',
-                                                                borderRadius: '4px',
-                                                                fontSize: '0.65rem',
-                                                                background: (stateColors[l.state] || '#555') + '22',
-                                                                color: stateColors[l.state] || '#888',
-                                                                border: `1px solid ${stateColors[l.state] || '#555'}`,
-                                                                fontWeight: 'bold'
-                                                            }}>
-                                                                {l.state || 'WAITING'}
-                                                            </span>
-                                                        </div>
-                                                        <div style={{ fontSize: '0.8rem', color: '#888', marginTop: '0.2rem' }}>Code: <span style={{ color: 'var(--secondary)' }}>{l.code}</span> | Teams: {l.teams?.length || 0}/{l.config?.teamCount || 0}</div>
-                                                    </div>
-                                                    <button className="btn btn-primary enter-league-btn" onClick={() => handleAdminEnter(l)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>Enter</button>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Invited leagues (Captain) */}
-                            <div className="card" style={{ textAlign: 'left', background: 'rgba(0,0,0,0.15)', borderColor: '#333' }}>
-                                <h3 style={{ borderBottom: '1px solid #333', paddingBottom: '0.5rem', color: 'var(--secondary)', marginBottom: '1rem' }}>Leagues You Participate In</h3>
-                                {invitedLeagues.length === 0 ? (
-                                    <p className="text-muted" style={{ fontSize: '0.9rem' }}>You haven't been invited to any leagues yet.</p>
-                                ) : (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '350px', overflowY: 'auto' }}>
-                                        {invitedLeagues.map(l => {
-                                            const myTeam = l.teams?.find(t => t.email?.toLowerCase() === user.email.toLowerCase());
-                                            const stateColors = { WAITING: '#f59e0b', LIVE: '#10b981', PAUSED: '#3b82f6', ENDED: '#ef4444' };
-                                            return (
-                                                <div key={l.code} className="league-card" style={{ padding: '0.8rem', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', border: '1px solid #222', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                    <div>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                                            <strong style={{ color: '#fff' }}>{l.name}</strong>
-                                                            <span style={{
-                                                                padding: '0.15rem 0.4rem',
-                                                                borderRadius: '4px',
-                                                                fontSize: '0.65rem',
-                                                                background: (stateColors[l.state] || '#555') + '22',
-                                                                color: stateColors[l.state] || '#888',
-                                                                border: `1px solid ${stateColors[l.state] || '#555'}`,
-                                                                fontWeight: 'bold'
-                                                            }}>
-                                                                {l.state || 'WAITING'}
-                                                            </span>
-                                                        </div>
-                                                        <div style={{ fontSize: '0.8rem', color: '#888', marginTop: '0.2rem' }}>
-                                                            Code: <span style={{ color: 'var(--secondary)' }}>{l.code}</span>
-                                                            {myTeam && <span style={{ color: '#34d399' }}> | Team: {myTeam.name}</span>}
-                                                        </div>
-                                                        {l.adminEmail && (
-                                                            <div style={{ fontSize: '0.75rem', color: '#aaa', marginTop: '0.2rem' }}>
-                                                                Admin: <span style={{ fontStyle: 'italic' }}>{l.adminEmail}</span>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    <button className="btn enter-league-btn" onClick={() => handleCaptainEnter(l)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', background: 'transparent', border: '2px solid var(--secondary)', color: 'var(--secondary)' }}>
-                                                        {myTeam ? 'Rejoin' : 'Join Draft'}
-                                                    </button>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                </div>
-            )}
+                )
+            ) : null}
 
             {/* --- CREATE VIEW --- */}
             {view === 'CREATE' && (

@@ -845,6 +845,10 @@ module.exports = (io, socket, data, supabase) => {
     });
 
     socket.on('GET_MY_LEAGUES', ({ email }) => {
+        if (!email) {
+            socket.emit('MY_LEAGUES', { adminLeagues: [], invitedLeagues: [], isSuperAdmin: false });
+            return;
+        }
         const cleanEmail = email.trim().toLowerCase();
         socket.email = cleanEmail;
         const adminLeagues = [];
