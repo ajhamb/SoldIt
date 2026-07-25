@@ -63,11 +63,25 @@ module.exports = (io, socket, data, supabase) => {
                 if (config.players && config.players.length > 0) {
                     initialPlayers = config.players.map((p, i) => ({
                         id: i + 1,
+                        externalId: p.externalId || p.external_id || '',
                         name: p.name,
                         category: p.category || 'General',
                         basePrice: p.basePrice || basePrice,
                         status: 'WAITING'
                     }));
+
+                    // Validate ExternalId uniqueness in initialPlayers
+                    const extIdMap = new Set();
+                    for (const p of initialPlayers) {
+                        if (p.externalId && p.externalId.trim()) {
+                            const cleanExt = p.externalId.trim().toLowerCase();
+                            if (extIdMap.has(cleanExt)) {
+                                socket.emit('ERROR', { message: `Validation Error: Duplicate ExternalId "${p.externalId}" found in player pool! League creation aborted.` });
+                                return;
+                            }
+                            extIdMap.add(cleanExt);
+                        }
+                    }
                 } else {
                     socket.emit('ERROR', { message: "Cannot create league without players! Please add players manually or via CSV." });
                     return;
@@ -642,6 +656,78 @@ module.exports = (io, socket, data, supabase) => {
         broadcastUpdate(io, leagueCode, league);
     });
 
+    socket.on('ADMIN_UPDATE_PLAYER', async ({ leagueCode, playerId, externalId, name, category, basePrice }, callback) => {
+        const league = data.leagues.get(leagueCode);
+        if (!league) {
+            if (callback) callback({ error: "League not found!" });
+            return;
+        }
+
+        if (!isSocketAdmin(socket, league)) {
+            if (callback) callback({ error: "Unauthorized: Only an Admin can update player details." });
+            return;
+        }
+
+        const player = league.players.find(p => p.id === playerId);
+        if (!player) {
+            if (callback) callback({ error: "Player not found!" });
+            return;
+        }
+
+        // Validate ExternalId uniqueness
+        if (externalId !== undefined && externalId.trim()) {
+            const cleanExt = externalId.trim().toLowerCase();
+            const existing = league.players.find(p => p.id !== playerId && p.externalId && p.externalId.trim().toLowerCase() === cleanExt);
+            if (existing) {
+                const err = `Validation Error: ExternalId "${externalId.trim()}" is already assigned to player "${existing.name}"!`;
+                league.activityLog.unshift({ type: 'SYSTEM', text: `ADMIN EDIT FAILED: ${err}` });
+                await saveSnapshot(league);
+                broadcastUpdate(io, leagueCode, league);
+                if (callback) callback({ error: err });
+                return;
+            }
+        }
+
+        if (externalId !== undefined) player.externalId = externalId.trim();
+        if (name && name.trim()) player.name = name.trim();
+        if (category) player.category = category;
+        if (basePrice && !isNaN(parseInt(basePrice))) player.basePrice = parseInt(basePrice);
+
+        // Update in currentPlayer if active
+        if (league.currentPlayer && league.currentPlayer.id === playerId) {
+            if (externalId !== undefined) league.currentPlayer.externalId = externalId.trim();
+            if (name && name.trim()) league.currentPlayer.name = name.trim();
+            if (category) league.currentPlayer.category = category;
+            if (basePrice && !isNaN(parseInt(basePrice))) league.currentPlayer.basePrice = parseInt(basePrice);
+        }
+
+        // Update in unpickedPlayers if present
+        const unpicked = league.unpickedPlayers?.find(p => p.id === playerId);
+        if (unpicked) {
+            if (externalId !== undefined) unpicked.externalId = externalId.trim();
+            if (name && name.trim()) unpicked.name = name.trim();
+            if (category) unpicked.category = category;
+            if (basePrice && !isNaN(parseInt(basePrice))) unpicked.basePrice = parseInt(basePrice);
+        }
+
+        // Update in teams squad if sold
+        league.teams.forEach(t => {
+            const squadP = t.squad?.find(p => p.id === playerId);
+            if (squadP) {
+                if (externalId !== undefined) squadP.externalId = externalId.trim();
+                if (name && name.trim()) squadP.name = name.trim();
+                if (category) squadP.category = category;
+            }
+        });
+
+        league.activityLog.unshift({ type: 'SYSTEM', text: `ADMIN: Updated details for ${player.name} (ExtID: ${player.externalId || 'N/A'})` });
+        console.log(`[${leagueCode}][UPDATE_PLAYER] ${player.name} updated. ExtID: ${player.externalId}`);
+
+        await saveSnapshot(league);
+        broadcastUpdate(io, leagueCode, league);
+        if (callback) callback({ success: true, player });
+    });
+
     // --- CAPTAIN PASS ---
     socket.on('CAPTAIN_PASS', async ({ leagueCode }) => {
         const league = data.leagues.get(leagueCode);
@@ -825,6 +911,53 @@ module.exports = (io, socket, data, supabase) => {
         await saveSnapshot(league);
         broadcastUpdate(io, leagueCode, league);
         notifyUserLeaguesUpdate(cleanEmail);
+    });
+
+    socket.on('TRANSFER_ADMIN_OWNERSHIP', async ({ leagueCode, newAdminEmail }, callback) => {
+        const league = data.leagues.get(leagueCode);
+        if (!league) {
+            if (callback) callback({ error: "League not found!" });
+            return;
+        }
+
+        const senderEmail = (socket.email || socket.handshake?.query?.email || '').trim().toLowerCase();
+        const isOwner = (league.adminEmail && league.adminEmail.toLowerCase() === senderEmail) || socket.id === league.adminId;
+        const isSuperAdmin = socket.rooms.has('super-admin-room') || (senderEmail && data.superAdmins.has(senderEmail));
+
+        if (!isOwner && !isSuperAdmin) {
+            if (callback) callback({ error: "Unauthorized: Only the current primary Admin or Super Admin can transfer ownership." });
+            return;
+        }
+
+        const cleanNewEmail = newAdminEmail?.trim().toLowerCase();
+        if (!cleanNewEmail || !cleanNewEmail.includes('@')) {
+            if (callback) callback({ error: "Please provide a valid email address." });
+            return;
+        }
+
+        if (league.adminEmail && league.adminEmail.toLowerCase() === cleanNewEmail) {
+            if (callback) callback({ error: `${cleanNewEmail} is already the primary admin of this league!` });
+            return;
+        }
+
+        const oldAdminEmail = league.adminEmail;
+        league.adminEmail = cleanNewEmail;
+
+        // Remove new admin email from invitations if present to prevent redundant invite
+        if (league.invitations) {
+            league.invitations = league.invitations.filter(inv => inv.email.toLowerCase() !== cleanNewEmail);
+        }
+
+        const logMsg = `Admin ownership transferred from ${oldAdminEmail || 'Admin'} to ${cleanNewEmail}`;
+        league.activityLog.unshift({ type: 'SYSTEM', text: logMsg });
+        console.log(`[${leagueCode}][TRANSFER_ADMIN] ${logMsg}`);
+
+        await saveSnapshot(league);
+        broadcastUpdate(io, leagueCode, league);
+        notifyUserLeaguesUpdate(oldAdminEmail);
+        notifyUserLeaguesUpdate(cleanNewEmail);
+
+        if (callback) callback({ success: true, newAdminEmail: cleanNewEmail });
     });
 
     socket.on('CHECK_INVITATION', ({ leagueCode, email }, callback) => {

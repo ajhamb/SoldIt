@@ -5,6 +5,24 @@ export default function SuperAdminDashboard({ allLeagues = [], socket }) {
     const [selectedCodes, setSelectedCodes] = useState([]);
     const [modalTab, setModalTab] = useState('TEAMS'); // 'TEAMS' | 'PLAYERS' | 'LOGS'
     const [playerFilter, setPlayerFilter] = useState('ALL'); // 'ALL' | 'SOLD' | 'UNSOLD' | 'WAITING'
+    const [saTransferEmail, setSaTransferEmail] = useState('');
+
+    const handleSuperAdminTransfer = (leagueCode) => {
+        if (!saTransferEmail) return;
+        const cleanEmail = saTransferEmail.trim().toLowerCase();
+        if (!window.confirm(`Super Admin: Transfer primary admin ownership of league ${leagueCode} to ${cleanEmail}?`)) return;
+        socket.emit('TRANSFER_ADMIN_OWNERSHIP', { leagueCode, newAdminEmail: cleanEmail }, (response) => {
+            if (response && response.error) {
+                alert(response.error);
+            } else {
+                alert(`Admin ownership of league ${leagueCode} transferred to ${cleanEmail}!`);
+                setSaTransferEmail('');
+                if (selectedLeague && selectedLeague.code === leagueCode) {
+                    setSelectedLeague(prev => prev ? ({ ...prev, adminEmail: cleanEmail }) : null);
+                }
+            }
+        });
+    };
 
     // Sort leagues newest to oldest by createdAt
     const sortedLeagues = [...allLeagues].sort((a, b) => {
@@ -538,6 +556,29 @@ export default function SuperAdminDashboard({ allLeagues = [], socket }) {
                                 </div>
                             </div>
                         )}
+
+                        {/* Reassign Admin Ownership */}
+                        <div style={{ marginTop: '0.5rem', background: 'rgba(0,0,0,0.3)', border: '1px solid #333', padding: '1rem', borderRadius: '6px' }}>
+                            <h4 style={{ margin: '0 0 0.5rem 0', color: '#f59e0b', fontSize: '0.9rem' }}>Reassign Admin Ownership</h4>
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                <input
+                                    id="sa-transfer-email-input"
+                                    type="email"
+                                    placeholder="newadmin@example.com"
+                                    value={saTransferEmail}
+                                    onChange={e => setSaTransferEmail(e.target.value)}
+                                    style={{ flex: 1, padding: '0.5rem', borderRadius: '4px', border: '1px solid #444', background: '#111', color: '#fff', fontSize: '0.85rem' }}
+                                />
+                                <button
+                                    id="sa-transfer-admin-btn"
+                                    className="btn"
+                                    onClick={() => handleSuperAdminTransfer(selectedLeague.code)}
+                                    style={{ background: '#f59e0b', color: '#000', fontWeight: 'bold', padding: '0.5rem 1rem', fontSize: '0.85rem' }}
+                                >
+                                    Transfer Ownership
+                                </button>
+                            </div>
+                        </div>
 
                         {/* Modal Footer */}
                         <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>

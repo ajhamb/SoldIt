@@ -4,11 +4,13 @@ import CaptainControls from './CaptainControls';
 import PlayerListView from './PlayerListView';
 import ActivityWidget from './ActivityWidget';
 import RulesModal from './RulesModal';
+import LeagueDashboardView from './LeagueDashboardView';
 import { supabase } from '../supabaseClient';
 
 export default function AuctionRoom({ socket, role, name, leagueCode, leagueState }) {
     const [showPlayers, setShowPlayers] = useState(false);
     const [showRules, setShowRules] = useState(false);
+    const [showDashboardView, setShowDashboardView] = useState(false);
     const [editingTeamId, setEditingTeamId] = useState(null);
     const [newTeamNameVal, setNewTeamNameVal] = useState('');
     // One-time onboarding modal for new leagues
@@ -17,6 +19,7 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
     const [inviteEmail, setInviteEmail] = useState('');
     const [inviteRole, setInviteRole] = useState('CAPTAIN');
     const [newTeamCount, setNewTeamCount] = useState(0);
+    const [transferAdminEmail, setTransferAdminEmail] = useState('');
 
     const handleInvite = (e) => {
         e.preventDefault();
@@ -26,6 +29,21 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
         socket.emit('INVITE_CAPTAIN', { leagueCode, email: cleanEmail, role: inviteRole }, (response) => {
             if (response && response.error) {
                 alert(response.error);
+            }
+        });
+    };
+
+    const handleTransferAdminOwnership = (e) => {
+        e.preventDefault();
+        if (!transferAdminEmail) return;
+        const cleanEmail = transferAdminEmail.trim().toLowerCase();
+        if (!confirm(`Are you sure you want to transfer Primary Admin ownership to ${cleanEmail}?`)) return;
+        socket.emit('TRANSFER_ADMIN_OWNERSHIP', { leagueCode, newAdminEmail: cleanEmail }, (response) => {
+            if (response && response.error) {
+                alert(response.error);
+            } else {
+                alert(`Admin ownership successfully transferred to ${cleanEmail}!`);
+                setTransferAdminEmail('');
             }
         });
     };
@@ -134,6 +152,9 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
                         </div>
 
                         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                            <button id="auction-dashboard-btn" className="btn" style={{ background: '#1e293b', border: '1px solid #334155', color: '#60a5fa', fontSize: '0.9rem', fontWeight: 'bold' }} onClick={() => setShowDashboardView(true)}>
+                                📊 Dashboard
+                            </button>
                             <button className="btn" style={{ background: '#333', border: '1px solid #555', color: '#ccc', fontSize: '0.9rem' }} onClick={() => setShowRules(true)}>
                                 Rules
                             </button>
@@ -255,6 +276,26 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
                                                 ))}
                                             </div>
                                         )}
+                                        <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid #333' }}>
+                                            <h4 style={{ margin: '0 0 0.5rem 0', color: '#f59e0b', fontSize: '0.95rem' }}>Transfer Primary Admin Ownership</h4>
+                                            <p style={{ fontSize: '0.8rem', color: '#aaa', margin: '0 0 0.8rem 0' }}>
+                                                Current Admin: <strong style={{ color: '#fff' }}>{leagueState.adminEmail || 'N/A'}</strong>
+                                            </p>
+                                            <form onSubmit={handleTransferAdminOwnership} style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                                <input 
+                                                    id="transfer-admin-email-input"
+                                                    type="email" 
+                                                    placeholder="newadmin@example.com" 
+                                                    value={transferAdminEmail} 
+                                                    onChange={e => setTransferAdminEmail(e.target.value)} 
+                                                    style={{ flex: 1, minWidth: '180px', padding: '0.6rem', borderRadius: '4px', border: '1px solid #444', background: 'rgba(0,0,0,0.4)', color: '#fff', outline: 'none' }} 
+                                                    required 
+                                                />
+                                                <button id="transfer-admin-btn" className="btn" type="submit" style={{ background: '#f59e0b', color: '#000', fontWeight: 'bold', padding: '0.6rem 1rem', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+                                                    Transfer
+                                                </button>
+                                            </form>
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -464,6 +505,9 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
             )}
             {showRules && (
                 <RulesModal config={config} onClose={() => setShowRules(false)} />
+            )}
+            {showDashboardView && (
+                <LeagueDashboardView league={leagueState} onClose={() => setShowDashboardView(false)} />
             )}
 
 

@@ -8,12 +8,13 @@ export default function PlayerListView({ players, teams, onClose, socket, role, 
     const [editPlayer, setEditPlayer] = useState(null);
     const [editTeam, setEditTeam] = useState('');
     const [editPrice, setEditPrice] = useState('');
+    const [editExternalId, setEditExternalId] = useState('');
 
     const filteredPlayers = players.filter(p => {
         // Status Filter
         let matchesStatus = true;
         if (filter === 'SOLD') matchesStatus = p.status === 'SOLD';
-        if (filter === 'UNSOLD') matchesStatus = p.status === 'UNSOLD' || p.status === 'WAITING';
+        if (filter === 'UNSHORT') matchesStatus = p.status === 'UNSOLD' || p.status === 'WAITING';
 
         // Team Filter
         let matchesTeam = true;
@@ -25,9 +26,10 @@ export default function PlayerListView({ players, teams, onClose, socket, role, 
     });
 
     const exportCSV = () => {
-        const headers = ["Name", "Role", "Status", "SoldTo", "Price"];
+        const headers = ["Name", "ExternalId", "Role", "Status", "SoldTo", "Price"];
         const rows = players.map(p => [
             p.name,
+            p.externalId || "",
             p.category,
             p.status,
             p.soldTo || "",
@@ -53,23 +55,50 @@ export default function PlayerListView({ players, teams, onClose, socket, role, 
         setEditPlayer(p);
         setEditTeam(p.soldTo || (teams[0] ? teams[0].name : ''));
         setEditPrice(p.soldAt || p.basePrice || 20);
+        setEditExternalId(p.externalId || '');
     };
 
     const handleSave = () => {
-        if (!editPlayer || !editTeam || !editPrice) return;
+        if (!editPlayer) return;
 
-        socket.emit('ADMIN_ASSIGN_PLAYER', {
+        const cleanExt = editExternalId.trim();
+        if (cleanExt) {
+            const existing = players.find(p => p.id !== editPlayer.id && p.externalId && p.externalId.toLowerCase() === cleanExt.toLowerCase());
+            if (existing) {
+                alert(`Validation Error: ExternalId "${cleanExt}" is already assigned to player "${existing.name}"!`);
+                return;
+            }
+        }
+
+        // Emit player detail updates (External ID, etc.)
+        socket.emit('ADMIN_UPDATE_PLAYER', {
             leagueCode,
             playerId: editPlayer.id,
-            teamName: editTeam,
-            price: editPrice
+            externalId: editExternalId,
+            name: editPlayer.name,
+            category: editPlayer.category
+        }, (response) => {
+            if (response && response.error) {
+                alert(response.error);
+                return;
+            }
         });
+
+        if (editTeam && editPrice) {
+            socket.emit('ADMIN_ASSIGN_PLAYER', {
+                leagueCode,
+                playerId: editPlayer.id,
+                teamName: editTeam,
+                price: editPrice
+            });
+        }
+
         setEditPlayer(null); // Close modal
     };
 
     return (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.9)', zIndex: 100, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '2rem' }}>
-            <div className="card" style={{ width: '100%', maxWidth: '900px', height: '90vh', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+            <div className="card" style={{ width: '100%', maxWidth: '950px', height: '90vh', display: 'flex', flexDirection: 'column', position: 'relative' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', borderBottom: '1px solid #444', paddingBottom: '1rem', alignItems: 'center' }}>
                     <h2>Player List ({players.length})</h2>
                     <div style={{ display: 'flex', gap: '1rem' }}>
@@ -100,10 +129,11 @@ export default function PlayerListView({ players, teams, onClose, socket, role, 
                 </div>
 
                 <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
-                    <table style={{ width: '100%', minWidth: '600px', borderCollapse: 'collapse', textAlign: 'left' }}>
+                    <table style={{ width: '100%', minWidth: '700px', borderCollapse: 'collapse', textAlign: 'left' }}>
                         <thead>
                             <tr style={{ background: '#333', color: '#aaa' }}>
                                 <th style={{ padding: '0.5rem' }}>Name</th>
+                                <th style={{ padding: '0.5rem' }}>External ID</th>
                                 <th style={{ padding: '0.5rem' }}>Role</th>
                                 <th style={{ padding: '0.5rem' }}>Status</th>
                                 <th style={{ padding: '0.5rem' }}>Sold To</th>
@@ -115,6 +145,7 @@ export default function PlayerListView({ players, teams, onClose, socket, role, 
                             {filteredPlayers.map(p => (
                                 <tr key={p.id} style={{ borderBottom: '1px solid #333' }}>
                                     <td style={{ padding: '0.8rem 0.5rem', fontWeight: 'bold' }}>{p.name}</td>
+                                    <td style={{ padding: '0.8rem 0.5rem', color: '#38bdf8', fontFamily: 'monospace' }}>{p.externalId || '-'}</td>
                                     <td style={{ padding: '0.8rem 0.5rem', color: '#999' }}>{p.category}</td>
                                     <td style={{ padding: '0.8rem 0.5rem' }}>
                                         <span style={{
@@ -140,7 +171,7 @@ export default function PlayerListView({ players, teams, onClose, socket, role, 
                             ))}
                             {filteredPlayers.length === 0 && (
                                 <tr>
-                                    <td colSpan="6" style={{ padding: '2rem', textAlign: 'center', color: '#666' }}>No players found</td>
+                                    <td colSpan="7" style={{ padding: '2rem', textAlign: 'center', color: '#666' }}>No players found</td>
                                 </tr>
                             )}
                         </tbody>
@@ -152,15 +183,27 @@ export default function PlayerListView({ players, teams, onClose, socket, role, 
                     <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: '#222', padding: '2rem', borderRadius: '8px', border: '1px solid #555', boxShadow: '0 0 20px rgba(0,0,0,0.8)', zIndex: 200, width: '400px', maxWidth: '90%' }}>
                         <h3 style={{ marginBottom: '0.5rem', color: 'var(--primary)' }}>Edit: {editPlayer.name}</h3>
                         <p style={{ fontSize: '0.8rem', color: '#888', marginBottom: '1rem' }}>
-                            Adjust Price or Reassign Team. (Budget will update automatically)
+                            Adjust External ID, Price, or Reassign Team.
                         </p>
+
+                        <div style={{ marginBottom: '1rem' }}>
+                            <label style={{ display: 'block', marginBottom: '0.5rem' }}>External ID:</label>
+                            <input
+                                id="edit-player-external-id"
+                                type="text"
+                                value={editExternalId}
+                                onChange={e => setEditExternalId(e.target.value)}
+                                placeholder="e.g. EXT-101"
+                                style={{ width: '100%', padding: '0.5rem', background: '#333', color: '#fff', border: '1px solid #555', borderRadius: '4px' }}
+                            />
+                        </div>
 
                         <div style={{ marginBottom: '1rem' }}>
                             <label style={{ display: 'block', marginBottom: '0.5rem' }}>Assign To Team:</label>
                             <select
                                 value={editTeam}
                                 onChange={e => setEditTeam(e.target.value)}
-                                style={{ width: '100%', padding: '0.5rem', background: '#333', color: '#fff', border: '1px solid #555' }}
+                                style={{ width: '100%', padding: '0.5rem', background: '#333', color: '#fff', border: '1px solid #555', borderRadius: '4px' }}
                             >
                                 <option value="" disabled>Select Team</option>
                                 {teams.map(t => (
@@ -175,12 +218,12 @@ export default function PlayerListView({ players, teams, onClose, socket, role, 
                                 type="number"
                                 value={editPrice}
                                 onChange={e => setEditPrice(e.target.value)}
-                                style={{ width: '100%', padding: '0.5rem', background: '#333', color: '#fff', border: '1px solid #555' }}
+                                style={{ width: '100%', padding: '0.5rem', background: '#333', color: '#fff', border: '1px solid #555', borderRadius: '4px' }}
                             />
                         </div>
 
                         <div style={{ display: 'flex', gap: '1rem' }}>
-                            <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleSave}>Confirm</button>
+                            <button id="save-player-edit-btn" className="btn btn-primary" style={{ flex: 1 }} onClick={handleSave}>Confirm</button>
                             <button
                                 className="btn"
                                 style={{ flex: 1, background: '#772222', border: '1px solid #aa4444', color: '#ffaaaa' }}

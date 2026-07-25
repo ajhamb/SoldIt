@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Auction Viewer - HOPL-Win-26</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+header { background: linear-gradient(135deg, #1e293b, #0f172a); border-bottom: 1px solid #334155; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+header h1 { font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 12px; }
+header h1 span { color: #60a5fa; }
+.status-badge { padding: 4px 12px; border-radius: 6px; font-size: 13px; font-weight: 600; letter-spacing: 0.5px; background: #f59e0b20; color: #fbbf24; border: 1px solid #f59e0b40; }
+.status-badge.WAITING { background: #f59e0b20; color: #fbbf24; border-color: #f59e0b40; }
+.status-badge.LIVE { background: #22c55e20; color: #4ade80; border-color: #22c55e40; }
+.status-badge.COMPLETED { background: #3b82f620; color: #60a5fa; border-color: #3b82f640; }
+.stats-row { display: flex; gap: 24px; flex-wrap: wrap; font-size: 14px; color: #94a3b8; }
+.stats-row strong { color: #e2e8f0; font-weight: 600; }
+.container { max-width: 1440px; margin: 0 auto; padding: 20px; }
+.tabs { display: flex; gap: 4px; background: #1e293b; padding: 4px; border-radius: 10px; margin-bottom: 20px; overflow-x: auto; }
+.tab { padding: 10px 20px; border: none; background: transparent; color: #94a3b8; cursor: pointer; border-radius: 8px; font-size: 14px; font-weight: 500; white-space: nowrap; transition: all 0.15s; }
+.tab:hover { color: #e2e8f0; }
+.tab.active { background: #334155; color: #60a5fa; }
+.panel { display: none; }
+.panel.active { display: block; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.card { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 16px; transition: border-color 0.15s; }
+.card:hover { border-color: #475569; }
+.card .name { font-weight: 600; font-size: 15px; }
+.card .sub { font-size: 13px; color: #94a3b8; margin-top: 4px; }
+.card .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-top: 8px; text-transform: uppercase; letter-spacing: 0.3px; }
+.tag.Batter { background: #3b82f620; color: #60a5fa; }
+.tag.Bowler { background: #22c55e20; color: #4ade80; }
+.tag.All-Rounder { background: #a855f720; color: #c084fc; }
+.tag.WICKETKEEPER { background: #f59e0b20; color: #fbbf24; }
+.card .price { font-size: 18px; font-weight: 700; color: #fbbf24; margin-top: 8px; }
+.card .price small { font-size: 13px; font-weight: 400; color: #94a3b8; }
+.status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+.status-dot.WAITING { background: #f59e0b; }
+.status-dot.SOLD { background: #22c55e; }
+.status-dot.UNSOLD { background: #ef4444; }
+
+.team-card { border-left: 4px solid; padding-left: 14px; }
+.team-card .squad-list { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px; }
+.team-card .squad-tag { font-size: 12px; padding: 2px 8px; border-radius: 4px; background: #334155; color: #cbd5e1; }
+.team-card .budget { font-size: 18px; font-weight: 700; color: #4ade80; }
+
+.bid-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #1e293b; font-size: 14px; }
+.bid-row:last-child { border-bottom: none; }
+.bid-amount { font-weight: 700; color: #fbbf24; }
+.bid-player { color: #60a5fa; }
+.bid-team { color: #c084fc; }
+.bid-time { color: #64748b; font-size: 12px; }
+
+.log-row { padding: 8px 0; border-bottom: 1px solid #1e293b; font-size: 13px; display: flex; align-items: start; gap: 8px; }
+.log-row:last-child { border-bottom: none; }
+.log-icon { font-size: 16px; flex-shrink: 0; }
+.log-time { color: #64748b; font-size: 11px; flex-shrink: 0; }
+
+.config-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.config-item { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 14px; text-align: center; }
+.config-item .value { font-size: 24px; font-weight: 700; color: #60a5fa; }
+.config-item .label { font-size: 12px; color: #94a3b8; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: left; padding: 10px 12px; color: #94a3b8; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #334155; }
+td { padding: 10px 12px; border-bottom: 1px solid #1e293b; }
+tr:hover td { background: #1e293b80; }
+.filter-bar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.filter-bar input, .filter-bar select { padding: 8px 12px; background: #1e293b; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; font-size: 14px; outline: none; }
+.filter-bar input:focus, .filter-bar select:focus { border-color: #60a5fa; }
+.filter-bar input { flex: 1; min-width: 180px; }
+.search-hint { font-size: 12px; color: #64748b; padding: 8px; text-align: center; }
+
+.auction-current { background: linear-gradient(135deg, #1e293b, #0f172a); border: 1px solid #334155; border-radius: 10px; padding: 24px; margin-bottom: 20px; text-align: center; }
+.auction-current .player-name { font-size: 28px; font-weight: 700; }
+.auction-current .bid-amount { font-size: 42px; font-weight: 800; color: #fbbf24; margin: 8px 0; }
+.auction-current .bid-holder { font-size: 16px; color: #94a3b8; }
+.auction-current .empty-state { color: #64748b; font-size: 16px; padding: 20px; }
+
+@media (max-width: 640px) {
+  header { flex-direction: column; align-items: start; }
+  .stats-row { gap: 12px; }
+  .grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span>🏏</span> <span id="auction-name"></span></h1>
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+    <span class="status-badge" id="auction-status"></span>
+    <div class="stats-row">
+      <span>Code: <strong id="auction-code"></strong></span>
+      <span>Admin: <strong id="auction-admin"></strong></span>
+      <span>Created: <strong id="auction-created"></strong></span>
+    </div>
+  </div>
+</header>
+
+<div class="container">
+  <div class="tabs" id="tabs">
+    <button class="tab active" data-tab="dashboard">Dashboard</button>
+    <button class="tab" data-tab="players">Players (50)</button>
+    <button class="tab" data-tab="teams">Teams</button>
+    <button class="tab" data-tab="bids">Bid History</button>
+    <button class="tab" data-tab="logs">Activity Log</button>
+    <button class="tab" data-tab="config">Config</button>
+  </div>
+
+  <div class="panel active" id="panel-dashboard">
+    <div class="auction-current" id="current-bid-display"></div>
+    <div class="grid" id="dashboard-stats"></div>
+  </div>
+
+  <div class="panel" id="panel-players">
+    <div class="filter-bar">
+      <input type="text" id="player-search" placeholder="Search by name, category..." />
+      <select id="player-category-filter">
+        <option value="">All Categories</option>
+        <option value="Batter">Batter</option>
+        <option value="Bowler">Bowler</option>
+        <option value="All-Rounder">All-Rounder</option>
+      </select>
+      <select id="player-status-filter">
+        <option value="">All Statuses</option>
+        <option value="WAITING">Waiting</option>
+        <option value="SOLD">Sold</option>
+        <option value="UNSOLD">Unsold</option>
+      </select>
+    </div>
+    <div class="grid" id="players-grid"></div>
+    <div class="search-hint" id="players-hint"></div>
+  </div>
+
+  <div class="panel" id="panel-teams">
+    <div class="grid" id="teams-grid"></div>
+  </div>
+
+  <div class="panel" id="panel-bids">
+    <div id="bids-list"></div>
+    <div class="search-hint" id="bids-hint"></div>
+  </div>
+
+  <div class="panel" id="panel-logs">
+    <div id="logs-list"></div>
+  </div>
+
+  <div class="panel" id="panel-config">
+    <div class="config-grid" id="config-grid"></div>
+  </div>
+</div>
+
+<script>
+const data = document.currentScript?.dataset?.json;
+
+let auction = null;
+
+function render() {
+  renderHeader();
+  renderDashboard();
+  renderPlayers();
+  renderTeams();
+  renderBids();
+  renderLogs();
+  renderConfig();
+}
+
+function renderHeader() {
+  document.getElementById('auction-name').textContent = auction.name || 'Unknown Auction';
+  document.getElementById('auction-code').textContent = auction.code || '—';
+  document.getElementById('auction-admin').textContent = auction.adminName || (auction.adminEmail || '—');
+  const el = document.getElementById('auction-created');
+  if (auction.createdAt) {
+    const d = new Date(auction.createdAt);
+    el.textContent = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  } else { el.textContent = '—'; }
+  const statusEl = document.getElementById('auction-status');
+  statusEl.textContent = auction.state || 'UNKNOWN';
+  statusEl.className = 'status-badge ' + (auction.state || '');
+}
+
+function renderDashboard() {
+  const currentDiv = document.getElementById('current-bid-display');
+  if (auction.currentPlayer && auction.currentBid) {
+    currentDiv.innerHTML = `<div class="player-name">${escapeHtml(auction.currentPlayer.name || auction.currentPlayer)}</div>
+      <div class="bid-amount">$${auction.currentBid.amount || 0}</div>
+      <div class="bid-holder">Current holder: ${auction.currentBid.holderName || auction.currentBid.holder || 'None'}</div>`;
+  } else {
+    currentDiv.innerHTML = '<div class="empty-state">⏸️ No active bidding round</div>';
+  }
+
+  const totalPlayers = (auction.players || []).length;
+  const sold = (auction.players || []).filter(p => p.status === 'SOLD').length;
+  const unsold = (auction.players || []).filter(p => p.status === 'UNSOLD').length;
+  const waiting = (auction.players || []).filter(p => p.status === 'WAITING').length;
+  const unpicked = (auction.unpickedPlayers || []).length;
+  const teamCount = (auction.teams || []).length;
+  const totalBids = (auction.bidHistory || []).length;
+
+  document.getElementById('dashboard-stats').innerHTML = `
+    <div class="card" style="text-align:center;"><div style="font-size:32px;font-weight:700;color:#60a5fa;">${totalPlayers}</div><div class="sub">Total Players</div></div>
+    <div class="card" style="text-align:center;"><div style="font-size:32px;font-weight:700;color:#4ade80;">${sold}</div><div class="sub">Sold</div></div>
+    <div class="card" style="text-align:center;"><div style="font-size:32px;font-weight:700;color:#ef4444;">${unsold}</div><div class="sub">Unsold</div></div>
+    <div class="card" style="text-align:center;"><div style="font-size:32px;font-weight:700;color:#fbbf24;">${waiting}</div><div class="sub">Waiting</div></div>
+    <div class="card" style="text-align:center;"><div style="font-size:32px;font-weight:700;color:#c084fc;">${unpicked}</div><div class="sub">Unpicked</div></div>
+    <div class="card" style="text-align:center;"><div style="font-size:32px;font-weight:700;color:#f97316;">${teamCount}</div><div class="sub">Teams</div></div>
+    <div class="card" style="text-align:center;"><div style="font-size:32px;font-weight:700;color:#06b6d4;">${totalBids}</div><div class="sub">Total Bids</div></div>
+    <div class="card" style="text-align:center;"><div style="font-size:32px;font-weight:700;color:#a855f7;">${(auction.passedTeams || []).length}</div><div class="sub">Passes</div></div>
+  `;
+}
+
+function renderPlayers() {
+  const grid = document.getElementById('players-grid');
+  const hint = document.getElementById('players-hint');
+  const search = (document.getElementById('player-search').value || '').toLowerCase();
+  const catFilter = document.getElementById('player-category-filter').value;
+  const statusFilter = document.getElementById('player-status-filter').value;
+
+  let players = auction.players || [];
+  players = players.filter(p => {
+    if (search && !p.name.toLowerCase().includes(search) && !p.category.toLowerCase().includes(search)) return false;
+    if (catFilter && p.category !== catFilter) return false;
+    if (statusFilter && p.status !== statusFilter) return false;
+    return true;
+  });
+
+  if (players.length === 0) {
+    grid.innerHTML = '';
+    hint.textContent = 'No players match your filters.';
+    return;
+  }
+  hint.textContent = `Showing ${players.length} of ${(auction.players || []).length} players`;
+
+  grid.innerHTML = players.map(p => `
+    <div class="card">
+      <div class="name"><span class="status-dot ${p.status}"></span>${escapeHtml(p.name)}</div>
+      <div class="tag ${p.category.replace(/\s+/g, '-')}">${p.category}</div>
+      <div class="price">$${p.basePrice} <small>base price</small></div>
+      <div class="sub" style="margin-top:6px;">Status: ${p.status} ${p.soldTo ? '→ ' + escapeHtml(p.soldTo) : ''}${p.soldPrice ? ' @ $' + p.soldPrice : ''}</div>
+    </div>
+  `).join('');
+}
+
+function renderTeams() {
+  const grid = document.getElementById('teams-grid');
+  const teams = auction.teams || [];
+  if (teams.length === 0) {
+    grid.innerHTML = '<div class="search-hint">No teams have joined yet.</div>';
+    return;
+  }
+
+  const colors = ['#3b82f6','#22c55e','#f59e0b','#ef4444','#a855f7','#ec4899','#06b6d4','#f97316'];
+  grid.innerHTML = teams.map((t, i) => {
+    const color = colors[i % colors.length];
+    const squad = t.squad || [];
+    return `<div class="card team-card" style="border-left-color:${color}">
+      <div class="name" style="color:${color}">${escapeHtml(t.name)}</div>
+      <div class="sub">${escapeHtml(t.email)}</div>
+      <div style="margin-top:8px;display:flex;justify-content:space-between;align-items:center;">
+        <div><span class="sub">Budget:</span> <span class="budget">$${t.budget}</span></div>
+        <div><span class="sub">Squad:</span> <strong>${squad.length}</strong></div>
+      </div>
+      <div><span class="sub">Status:</span> ${t.status}</div>
+      ${squad.length > 0 ? `<div class="squad-list">${squad.map(s => `<span class="squad-tag">${escapeHtml(s.name || s)}</span>`).join('')}</div>` : '<div class="sub" style="margin-top:6px;">No players purchased yet.</div>'}
+    </div>`;
+  }).join('');
+}
+
+function renderBids() {
+  const list = document.getElementById('bids-list');
+  const hint = document.getElementById('bids-hint');
+  const history = auction.bidHistory || [];
+  if (history.length === 0) {
+    list.innerHTML = '<div class="search-hint">No bids have been placed yet.</div>';
+    hint.textContent = '';
+    return;
+  }
+  hint.textContent = `${history.length} bid(s)`;
+  list.innerHTML = history.slice().reverse().map(b => {
+    const time = b.timestamp ? new Date(b.timestamp).toLocaleTimeString() : '';
+    return `<div class="bid-row">
+      <div><span class="bid-player">${escapeHtml(b.playerName || b.player || '?')}</span> → <span class="bid-team">${escapeHtml(b.teamName || b.team || '?')}</span></div>
+      <div class="bid-amount">$${b.amount}</div>
+      <div class="bid-time">${time}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderLogs() {
+  const list = document.getElementById('logs-list');
+  const logs = auction.activityLog || [];
+  if (logs.length === 0) {
+    list.innerHTML = '<div class="search-hint">No activity yet.</div>';
+    return;
+  }
+  list.innerHTML = logs.slice().reverse().map(l => {
+    const icon = l.type === 'SYSTEM' ? '⚙️' : l.type === 'BID' ? '💰' : l.type === 'PLAYER_SOLD' ? '✅' : '📝';
+    return `<div class="log-row"><span class="log-icon">${icon}</span><span>${escapeHtml(l.text)}</span></div>`;
+  }).join('');
+}
+
+function renderConfig() {
+  const c = auction.config || {};
+  const items = [
+    { label: 'Budget', value: `$${c.budget}` },
+    { label: 'Max Bid', value: `$${c.maxBid}` },
+    { label: 'Base Price', value: `$${c.basePrice}` },
+    { label: 'Teams', value: c.teamCount },
+    { label: 'Players / Team', value: c.playersPerTeam },
+    { label: 'Total Players Needed', value: c.teamCount * c.playersPerTeam },
+  ];
+  document.getElementById('config-grid').innerHTML = items.map(i =>
+    `<div class="config-item"><div class="value">${i.value}</div><div class="label">${i.label}</div></div>`
+  ).join('');
+}
+
+function escapeHtml(str) {
+  if (str == null) return '';
+  const div = document.createElement('div');
+  div.textContent = String(str);
+  return div.innerHTML;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const tabs = document.querySelectorAll('.tab');
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+    });
+  });
+
+  document.getElementById('player-search').addEventListener('input', renderPlayers);
+  document.getElementById('player-category-filter').addEventListener('change', renderPlayers);
+  document.getElementById('player-status-filter').addEventListener('change', renderPlayers);
+
+  window.render = render;
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  const script = document.getElementById('auction-data');
+  try {
+    auction = JSON.parse(script.textContent);
+    render();
+  } catch (e) {
+    document.body.innerHTML = `<div style="padding:40px;text-align:center;color:#ef4444;">Failed to parse JSON: ${e.message}</div>`;
+  }
+});
+</script>
+<script id="auction-data" type="application/json">{"code":"U734Q0","name":"HOPL-Win-26","state":"WAITING","teams":[{"id":"-sO-HVLD24XXvgC_AAAF","name":"RivTest2","email":"rivaan.jhamb@gmail.com","squad":[],"budget":1000,"status":"JOINED"}],"config":{"budget":1000,"maxBid":200,"basePrice":50,"teamCount":5,"playersPerTeam":9},"adminId":"ew15Bmtl2se5BVHnAAAJ","players":[{"id":1,"name":"Rohan Munshi","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":2,"name":"Manoj Mirpuri","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":3,"name":"Ritesh Patel","status":"WAITING","category":"Batter","basePrice":50},{"id":4,"name":"Amit Jhamb","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":5,"name":"Rahul Rahul","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":6,"name":"Tapan Shah","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":7,"name":"Amit Sawhney","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":8,"name":"Udayakumar Pandurangan","status":"WAITING","category":"Batter","basePrice":50},{"id":9,"name":"Hari Ravikumar","status":"WAITING","category":"Bowler","basePrice":50},{"id":10,"name":"Manish K","status":"WAITING","category":"Bowler","basePrice":50},{"id":11,"name":"Pulkit Sangani","status":"WAITING","category":"Batter","basePrice":50},{"id":12,"name":"Siddharth Chahar","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":13,"name":"Anoop Suri","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":14,"name":"Uday Prakash","status":"WAITING","category":"Bowler","basePrice":50},{"id":15,"name":"Kapil Grover","status":"WAITING","category":"Bowler","basePrice":50},{"id":16,"name":"Rahul Pruthi","status":"WAITING","category":"Batter","basePrice":50},{"id":17,"name":"Rahul Chauhan","status":"WAITING","category":"Batter","basePrice":50},{"id":18,"name":"Rajesh Sharma","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":19,"name":"Arun P","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":20,"name":"Bhavish Bhatia","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":21,"name":"Nirdesh Parmar","status":"WAITING","category":"Batter","basePrice":50},{"id":22,"name":"Lalith Rajendran","status":"WAITING","category":"Batter","basePrice":50},{"id":23,"name":"Salvin Macwan","status":"WAITING","category":"Batter","basePrice":50},{"id":24,"name":"Keyur Javiya","status":"WAITING","category":"Batter","basePrice":50},{"id":25,"name":"Sudhir Gopal","status":"WAITING","category":"Bowler","basePrice":50},{"id":26,"name":"Sandip Salve","status":"WAITING","category":"Batter","basePrice":50},{"id":27,"name":"Deepak Dani","status":"WAITING","category":"Bowler","basePrice":50},{"id":28,"name":"Guru Krish","status":"WAITING","category":"Batter","basePrice":50},{"id":29,"name":"Karthi A","status":"WAITING","category":"Bowler","basePrice":50},{"id":30,"name":"Venki Shivanna","status":"WAITING","category":"Bowler","basePrice":50},{"id":31,"name":"Paresh Prajapati","status":"WAITING","category":"Bowler","basePrice":50},{"id":32,"name":"Mike Arunkumar","status":"WAITING","category":"Batter","basePrice":50},{"id":33,"name":"Fanil V","status":"WAITING","category":"Bowler","basePrice":50},{"id":34,"name":"Chandra Mugundha","status":"WAITING","category":"Batter","basePrice":50},{"id":35,"name":"Ashish Shah","status":"WAITING","category":"Bowler","basePrice":50},{"id":36,"name":"Ashish Yeole","status":"WAITING","category":"Bowler","basePrice":50},{"id":37,"name":"Nishant Goli","status":"WAITING","category":"Bowler","basePrice":50},{"id":38,"name":"Abhijeet P","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":39,"name":"Bhavin Shah","status":"WAITING","category":"Batter","basePrice":50},{"id":40,"name":"Uma Atluri","status":"WAITING","category":"Bowler","basePrice":50},{"id":41,"name":"Srinivas Kairamkonda","status":"WAITING","category":"Bowler","basePrice":50},{"id":42,"name":"Prajeesh Das","status":"WAITING","category":"Batter","basePrice":50},{"id":43,"name":"Manoj Mohan","status":"WAITING","category":"Batter","basePrice":50},{"id":44,"name":"Shivang Kaushik","status":"WAITING","category":"Batter","basePrice":50},{"id":45,"name":"Sandip Nathani","status":"WAITING","category":"Batter","basePrice":50},{"id":46,"name":"Madhu Hari","status":"WAITING","category":"Batter","basePrice":50},{"id":47,"name":"Kalai Athmalingame","status":"WAITING","category":"Batter","basePrice":50},{"id":48,"name":"Karthick Vairavel","status":"WAITING","category":"Batter","basePrice":50},{"id":49,"name":"Datta Jambhalkar","status":"WAITING","category":"Batter","basePrice":50},{"id":50,"name":"Amit Sharma","status":"WAITING","category":"Batter","basePrice":50}],"adminName":"Amit Jhamb","createdAt":"2026-07-25T21:35:06.989Z","activeTurn":null,"adminEmail":"amit.jhamb85@gmail.com","bidHistory":[],"currentBid":{"amount":0,"holder":null,"holderName":null},"activityLog":[{"text":"Captain RivTest2 has joined the auction","type":"SYSTEM"},{"text":"Admin ownership transferred from rivaan.jhamb@gmail.com to amit.jhamb85@gmail.com","type":"SYSTEM"}],"invitations":[{"role":"CAPTAIN","email":"rivaan.jhamb@gmail.com","status":"JOINED"}],"passedTeams":[],"biddingOrder":[],"currentPlayer":null,"unpickedPlayers":[{"id":1,"name":"Rohan Munshi","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":2,"name":"Manoj Mirpuri","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":3,"name":"Ritesh Patel","status":"WAITING","category":"Batter","basePrice":50},{"id":4,"name":"Amit Jhamb","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":5,"name":"Rahul Rahul","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":6,"name":"Tapan Shah","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":7,"name":"Amit Sawhney","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":8,"name":"Udayakumar Pandurangan","status":"WAITING","category":"Batter","basePrice":50},{"id":9,"name":"Hari Ravikumar","status":"WAITING","category":"Bowler","basePrice":50},{"id":10,"name":"Manish K","status":"WAITING","category":"Bowler","basePrice":50},{"id":11,"name":"Pulkit Sangani","status":"WAITING","category":"Batter","basePrice":50},{"id":12,"name":"Siddharth Chahar","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":13,"name":"Anoop Suri","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":14,"name":"Uday Prakash","status":"WAITING","category":"Bowler","basePrice":50},{"id":15,"name":"Kapil Grover","status":"WAITING","category":"Bowler","basePrice":50},{"id":16,"name":"Rahul Pruthi","status":"WAITING","category":"Batter","basePrice":50},{"id":17,"name":"Rahul Chauhan","status":"WAITING","category":"Batter","basePrice":50},{"id":18,"name":"Rajesh Sharma","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":19,"name":"Arun P","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":20,"name":"Bhavish Bhatia","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":21,"name":"Nirdesh Parmar","status":"WAITING","category":"Batter","basePrice":50},{"id":22,"name":"Lalith Rajendran","status":"WAITING","category":"Batter","basePrice":50},{"id":23,"name":"Salvin Macwan","status":"WAITING","category":"Batter","basePrice":50},{"id":24,"name":"Keyur Javiya","status":"WAITING","category":"Batter","basePrice":50},{"id":25,"name":"Sudhir Gopal","status":"WAITING","category":"Bowler","basePrice":50},{"id":26,"name":"Sandip Salve","status":"WAITING","category":"Batter","basePrice":50},{"id":27,"name":"Deepak Dani","status":"WAITING","category":"Bowler","basePrice":50},{"id":28,"name":"Guru Krish","status":"WAITING","category":"Batter","basePrice":50},{"id":29,"name":"Karthi A","status":"WAITING","category":"Bowler","basePrice":50},{"id":30,"name":"Venki Shivanna","status":"WAITING","category":"Bowler","basePrice":50},{"id":31,"name":"Paresh Prajapati","status":"WAITING","category":"Bowler","basePrice":50},{"id":32,"name":"Mike Arunkumar","status":"WAITING","category":"Batter","basePrice":50},{"id":33,"name":"Fanil V","status":"WAITING","category":"Bowler","basePrice":50},{"id":34,"name":"Chandra Mugundha","status":"WAITING","category":"Batter","basePrice":50},{"id":35,"name":"Ashish Shah","status":"WAITING","category":"Bowler","basePrice":50},{"id":36,"name":"Ashish Yeole","status":"WAITING","category":"Bowler","basePrice":50},{"id":37,"name":"Nishant Goli","status":"WAITING","category":"Bowler","basePrice":50},{"id":38,"name":"Abhijeet P","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":39,"name":"Bhavin Shah","status":"WAITING","category":"Batter","basePrice":50},{"id":40,"name":"Uma Atluri","status":"WAITING","category":"Bowler","basePrice":50},{"id":41,"name":"Srinivas Kairamkonda","status":"WAITING","category":"Bowler","basePrice":50},{"id":42,"name":"Prajeesh Das","status":"WAITING","category":"Batter","basePrice":50},{"id":43,"name":"Manoj Mohan","status":"WAITING","category":"Batter","basePrice":50},{"id":44,"name":"Shivang Kaushik","status":"WAITING","category":"Batter","basePrice":50},{"id":45,"name":"Sandip Nathani","status":"WAITING","category":"Batter","basePrice":50},{"id":46,"name":"Madhu Hari","status":"WAITING","category":"Batter","basePrice":50},{"id":47,"name":"Kalai Athmalingame","status":"WAITING","category":"Batter","basePrice":50},{"id":48,"name":"Karthick Vairavel","status":"WAITING","category":"Batter","basePrice":50},{"id":49,"name":"Datta Jambhalkar","status":"WAITING","category":"Batter","basePrice":50},{"id":50,"name":"Amit Sharma","status":"WAITING","category":"Batter","basePrice":50}],"adminName":"Amit Jhamb","createdAt":"2026-07-25T21:35:06.989Z","activeTurn":null,"adminEmail":"amit.jhamb85@gmail.com","bidHistory":[],"currentBid":{"amount":0,"holder":null,"holderName":null},"activityLog":[{"text":"Captain RivTest2 has joined the auction","type":"SYSTEM"},{"text":"Admin ownership transferred from rivaan.jhamb@gmail.com to amit.jhamb85@gmail.com","type":"SYSTEM"}],"invitations":[{"role":"CAPTAIN","email":"rivaan.jhamb@gmail.com","status":"JOINED"}],"passedTeams":[],"biddingOrder":[],"currentPlayer":null,"unpickedPlayers":[{"id":1,"name":"Rohan Munshi","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":2,"name":"Manoj Mirpuri","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":3,"name":"Ritesh Patel","status":"WAITING","category":"Batter","basePrice":50},{"id":4,"name":"Amit Jhamb","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":5,"name":"Rahul Rahul","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":6,"name":"Tapan Shah","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":7,"name":"Amit Sawhney","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":8,"name":"Udayakumar Pandurangan","status":"WAITING","category":"Batter","basePrice":50},{"id":9,"name":"Hari Ravikumar","status":"WAITING","category":"Bowler","basePrice":50},{"id":10,"name":"Manish K","status":"WAITING","category":"Bowler","basePrice":50},{"id":11,"name":"Pulkit Sangani","status":"WAITING","category":"Batter","basePrice":50},{"id":12,"name":"Siddharth Chahar","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":13,"name":"Anoop Suri","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":14,"name":"Uday Prakash","status":"WAITING","category":"Bowler","basePrice":50},{"id":15,"name":"Kapil Grover","status":"WAITING","category":"Bowler","basePrice":50},{"id":16,"name":"Rahul Pruthi","status":"WAITING","category":"Batter","basePrice":50},{"id":17,"name":"Rahul Chauhan","status":"WAITING","category":"Batter","basePrice":50},{"id":18,"name":"Rajesh Sharma","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":19,"name":"Arun P","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":20,"name":"Bhavish Bhatia","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":21,"name":"Nirdesh Parmar","status":"WAITING","category":"Batter","basePrice":50},{"id":22,"name":"Lalith Rajendran","status":"WAITING","category":"Batter","basePrice":50},{"id":23,"name":"Salvin Macwan","status":"WAITING","category":"Batter","basePrice":50},{"id":24,"name":"Keyur Javiya","status":"WAITING","category":"Batter","basePrice":50},{"id":25,"name":"Sudhir Gopal","status":"WAITING","category":"Bowler","basePrice":50},{"id":26,"name":"Sandip Salve","status":"WAITING","category":"Batter","basePrice":50},{"id":27,"name":"Deepak Dani","status":"WAITING","category":"Bowler","basePrice":50},{"id":28,"name":"Guru Krish","status":"WAITING","category":"Batter","basePrice":50},{"id":29,"name":"Karthi A","status":"WAITING","category":"Bowler","basePrice":50},{"id":30,"name":"Venki Shivanna","status":"WAITING","category":"Bowler","basePrice":50},{"id":31,"name":"Paresh Prajapati","status":"WAITING","category":"Bowler","basePrice":50},{"id":32,"name":"Mike Arunkumar","status":"WAITING","category":"Batter","basePrice":50},{"id":33,"name":"Fanil V","status":"WAITING","category":"Bowler","basePrice":50},{"id":34,"name":"Chandra Mugundha","status":"WAITING","category":"Batter","basePrice":50},{"id":35,"name":"Ashish Shah","status":"WAITING","category":"Bowler","basePrice":50},{"id":36,"name":"Ashish Yeole","status":"WAITING","category":"Bowler","basePrice":50},{"id":37,"name":"Nishant Goli","status":"WAITING","category":"Bowler","basePrice":50},{"id":38,"name":"Abhijeet P","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":39,"name":"Bhavin Shah","status":"WAITING","category":"Batter","basePrice":50},{"id":40,"name":"Uma Atluri","status":"WAITING","category":"Bowler","basePrice":50},{"id":41,"name":"Srinivas Kairamkonda","status":"WAITING","category":"Bowler","basePrice":50},{"id":42,"name":"Prajeesh Das","status":"WAITING","category":"Batter","basePrice":50},{"id":43,"name":"Manoj Mohan","status":"WAITING","category":"Batter","basePrice":50},{"id":44,"name":"Shivang Kaushik","status":"WAITING","category":"Batter","basePrice":50},{"id":45,"name":"Sandip Nathani","status":"WAITING","category":"Batter","basePrice":50},{"id":46,"name":"Madhu Hari","status":"WAITING","category":"Batter","basePrice":50},{"id":47,"name":"Kalai Athmalingame","status":"WAITING","category":"Batter","basePrice":50},{"id":48,"name":"Karthick Vairavel","status":"WAITING","category":"Batter","basePrice":50},{"id":49,"name":"Datta Jambhalkar","status":"WAITING","category":"Batter","basePrice":50},{"id":50,"name":"Amit Sharma","status":"WAITING","category":"Batter","basePrice":50}],"adminName":"Amit Jhamb","createdAt":"2026-07-25T21:35:06.989Z","activeTurn":null,"adminEmail":"amit.jhamb85@gmail.com","bidHistory":[],"currentBid":{"amount":0,"holder":null,"holderName":null},"activityLog":[{"text":"Captain RivTest2 has joined the auction","type":"SYSTEM"},{"text":"Admin ownership transferred from rivaan.jhamb@gmail.com to amit.jhamb85@gmail.com","type":"SYSTEM"}],"invitations":[{"role":"CAPTAIN","email":"rivaan.jhamb@gmail.com","status":"JOINED"}],"passedTeams":[],"biddingOrder":[],"currentPlayer":null,"unpickedPlayers":[{"id":1,"name":"Rohan Munshi","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":2,"name":"Manoj Mirpuri","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":3,"name":"Ritesh Patel","status":"WAITING","category":"Batter","basePrice":50},{"id":4,"name":"Amit Jhamb","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":5,"name":"Rahul Rahul","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":6,"name":"Tapan Shah","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":7,"name":"Amit Sawhney","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":8,"name":"Udayakumar Pandurangan","status":"WAITING","category":"Batter","basePrice":50},{"id":9,"name":"Hari Ravikumar","status":"WAITING","category":"Bowler","basePrice":50},{"id":10,"name":"Manish K","status":"WAITING","category":"Bowler","basePrice":50},{"id":11,"name":"Pulkit Sangani","status":"WAITING","category":"Batter","basePrice":50},{"id":12,"name":"Siddharth Chahar","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":13,"name":"Anoop Suri","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":14,"name":"Uday Prakash","status":"WAITING","category":"Bowler","basePrice":50},{"id":15,"name":"Kapil Grover","status":"WAITING","category":"Bowler","basePrice":50},{"id":16,"name":"Rahul Pruthi","status":"WAITING","category":"Batter","basePrice":50},{"id":17,"name":"Rahul Chauhan","status":"WAITING","category":"Batter","basePrice":50},{"id":18,"name":"Rajesh Sharma","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":19,"name":"Arun P","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":20,"name":"Bhavish Bhatia","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":21,"name":"Nirdesh Parmar","status":"WAITING","category":"Batter","basePrice":50},{"id":22,"name":"Lalith Rajendran","status":"WAITING","category":"Batter","basePrice":50},{"id":23,"name":"Salvin Macwan","status":"WAITING","category":"Batter","basePrice":50},{"id":24,"name":"Keyur Javiya","status":"WAITING","category":"Batter","basePrice":50},{"id":25,"name":"Sudhir Gopal","status":"WAITING","category":"Bowler","basePrice":50},{"id":26,"name":"Sandip Salve","status":"WAITING","category":"Batter","basePrice":50},{"id":27,"name":"Deepak Dani","status":"WAITING","category":"Bowler","basePrice":50},{"id":28,"name":"Guru Krish","status":"WAITING","category":"Batter","basePrice":50},{"id":29,"name":"Karthi A","status":"WAITING","category":"Bowler","basePrice":50},{"id":30,"name":"Venki Shivanna","status":"WAITING","category":"Bowler","basePrice":50},{"id":31,"name":"Paresh Prajapati","status":"WAITING","category":"Bowler","basePrice":50},{"id":32,"name":"Mike Arunkumar","status":"WAITING","category":"Batter","basePrice":50},{"id":33,"name":"Fanil V","status":"WAITING","category":"Bowler","basePrice":50},{"id":34,"name":"Chandra Mugundha","status":"WAITING","category":"Batter","basePrice":50},{"id":35,"name":"Ashish Shah","status":"WAITING","category":"Bowler","basePrice":50},{"id":36,"name":"Ashish Yeole","status":"WAITING","category":"Bowler","basePrice":50},{"id":37,"name":"Nishant Goli","status":"WAITING","category":"Bowler","basePrice":50},{"id":38,"name":"Abhijeet P","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":39,"name":"Bhavin Shah","status":"WAITING","category":"Batter","basePrice":50},{"id":40,"name":"Uma Atluri","status":"WAITING","category":"Bowler","basePrice":50},{"id":41,"name":"Srinivas Kairamkonda","status":"WAITING","category":"Bowler","basePrice":50},{"id":42,"name":"Prajeesh Das","status":"WAITING","category":"Batter","basePrice":50},{"id":43,"name":"Manoj Mohan","status":"WAITING","category":"Batter","basePrice":50},{"id":44,"name":"Shivang Kaushik","status":"WAITING","category":"Batter","basePrice":50},{"id":45,"name":"Sandip Nathani","status":"WAITING","category":"Batter","basePrice":50},{"id":46,"name":"Madhu Hari","status":"WAITING","category":"Batter","basePrice":50},{"id":47,"name":"Kalai Athmalingame","status":"WAITING","category":"Batter","basePrice":50},{"id":48,"name":"Karthick Vairavel","status":"WAITING","category":"Batter","basePrice":50},{"id":49,"name":"Datta Jambhalkar","status":"WAITING","category":"Batter","basePrice":50},{"id":50,"name":"Amit Sharma","status":"WAITING","category":"Batter","basePrice":50}],"adminName":"Amit Jhamb","createdAt":"2026-07-25T21:35:06.989Z","activeTurn":null,"adminEmail":"amit.jhamb85@gmail.com","bidHistory":[],"currentBid":{"amount":0,"holder":null,"holderName":null},"activityLog":[{"text":"Captain RivTest2 has joined the auction","type":"SYSTEM"},{"text":"Admin ownership transferred from rivaan.jhamb@gmail.com to amit.jhamb85@gmail.com","type":"SYSTEM"}],"invitations":[{"role":"CAPTAIN","email":"rivaan.jhamb@gmail.com","status":"JOINED"}],"passedTeams":[],"biddingOrder":[],"currentPlayer":null,"unpickedPlayers":[{"id":1,"name":"Rohan Munshi","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":2,"name":"Manoj Mirpuri","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":3,"name":"Ritesh Patel","status":"WAITING","category":"Batter","basePrice":50},{"id":4,"name":"Amit Jhamb","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":5,"name":"Rahul Rahul","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":6,"name":"Tapan Shah","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":7,"name":"Amit Sawhney","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":8,"name":"Udayakumar Pandurangan","status":"WAITING","category":"Batter","basePrice":50},{"id":9,"name":"Hari Ravikumar","status":"WAITING","category":"Bowler","basePrice":50},{"id":10,"name":"Manish K","status":"WAITING","category":"Bowler","basePrice":50},{"id":11,"name":"Pulkit Sangani","status":"WAITING","category":"Batter","basePrice":50},{"id":12,"name":"Siddharth Chahar","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":13,"name":"Anoop Suri","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":14,"name":"Uday Prakash","status":"WAITING","category":"Bowler","basePrice":50},{"id":15,"name":"Kapil Grover","status":"WAITING","category":"Bowler","basePrice":50},{"id":16,"name":"Rahul Pruthi","status":"WAITING","category":"Batter","basePrice":50},{"id":17,"name":"Rahul Chauhan","status":"WAITING","category":"Batter","basePrice":50},{"id":18,"name":"Rajesh Sharma","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":19,"name":"Arun P","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":20,"name":"Bhavish Bhatia","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":21,"name":"Nirdesh Parmar","status":"WAITING","category":"Batter","basePrice":50},{"id":22,"name":"Lalith Rajendran","status":"WAITING","category":"Batter","basePrice":50},{"id":23,"name":"Salvin Macwan","status":"WAITING","category":"Batter","basePrice":50},{"id":24,"name":"Keyur Javiya","status":"WAITING","category":"Batter","basePrice":50},{"id":25,"name":"Sudhir Gopal","status":"WAITING","category":"Bowler","basePrice":50},{"id":26,"name":"Sandip Salve","status":"WAITING","category":"Batter","basePrice":50},{"id":27,"name":"Deepak Dani","status":"WAITING","category":"Bowler","basePrice":50},{"id":28,"name":"Guru Krish","status":"WAITING","category":"Batter","basePrice":50},{"id":29,"name":"Karthi A","status":"WAITING","category":"Bowler","basePrice":50},{"id":30,"name":"Venki Shivanna","status":"WAITING","category":"Bowler","basePrice":50},{"id":31,"name":"Paresh Prajapati","status":"WAITING","category":"Bowler","basePrice":50},{"id":32,"name":"Mike Arunkumar","status":"WAITING","category":"Batter","basePrice":50},{"id":33,"name":"Fanil V","status":"WAITING","category":"Bowler","basePrice":50},{"id":34,"name":"Chandra Mugundha","status":"WAITING","category":"Batter","basePrice":50},{"id":35,"name":"Ashish Shah","status":"WAITING","category":"Bowler","basePrice":50},{"id":36,"name":"Ashish Yeole","status":"WAITING","category":"Bowler","basePrice":50},{"id":37,"name":"Nishant Goli","status":"WAITING","category":"Bowler","basePrice":50},{"id":38,"name":"Abhijeet P","status":"WAITING","category":"All-Rounder","basePrice":50},{"id":39,"name":"Bhavin Shah","status":"WAITING","category":"Batter","basePrice":50},{"id":40,"name":"Uma Atluri","status":"WAITING","category":"Bowler","basePrice":50},{"id":41,"name":"Srinivas Kairamkonda","status":"WAITING","category":"Bowler","basePrice":50},{"id":42,"name":"Prajeesh Das","status":"WAITING","category":"Batter","basePrice":50},{"id":43,"name":"Manoj Mohan","status":"WAITING","category":"Batter","basePrice":50},{"id":44,"name":"Shivang Kaushik","status":"WAITING","category":"Batter","basePrice":50},{"id":45,"name":"Sandip Nathani","status":"WAITING","category":"Batter","basePrice":50},{"id":46,"name":"Madhu Hari","status":"WAITING","category":"Batter","basePrice":50},{"id":47,"name":"Kalai Athmalingame","status":"WAITING","category":"Batter","basePrice":50},{"id":48,"name":"Karthick Vairavel","status":"WAITING","category":"Batter","basePrice":50},{"id":49,"name":"Datta Jambhalkar","status":"WAITING","category":"Batter","basePrice":50},{"id":50,"name":"Amit Sharma","status":"WAITING","category":"Batter","basePrice":50}],"adminName":"Amit Jhamb","createdAt":"2026-07-25T21:35:06.989Z","activeTurn":null,"adminEmail":"amit.jhamb85@gmail.com","bidHistory":[],"currentBid":{"amount":0,"holder":null,"holderName":null},"activityLog":[{"text":"Captain RivTest2 has joined the auction","type":"SYSTEM"},{"text":"Admin ownership transferred from rivaan.jhamb@gmail.com to amit.jhamb85@gmail.com","type":"SYSTEM"}],"invitations":[{"role":"CAPTAIN","email":"rivaan.jhamb@gmail.com","status":"JOINED"}],"passedTeams":[],"biddingOrder":[],"currentPlayer":null,"roundRobinStartIndex":-1}</script>
+</body>
+</html>

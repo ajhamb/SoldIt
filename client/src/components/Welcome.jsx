@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
+import LeagueDashboardView from './LeagueDashboardView';
 
 export default function Welcome({ onJoin, user, socket }) {
     const [view, setView] = useState('MENU'); // MENU, CREATE, JOIN, SUPER_ADMIN
@@ -13,7 +14,8 @@ export default function Welcome({ onJoin, user, socket }) {
     const [isSuperAdmin, setIsSuperAdmin] = useState(false);
     const [showProfileDropdown, setShowProfileDropdown] = useState(false);
 
-
+    // View-Only League Dashboard View State
+    const [viewOnlyLeague, setViewOnlyLeague] = useState(null);
 
     // Modal to request Team Name when Captain enters league for first time
     const [captainJoinModal, setCaptainJoinModal] = useState(null); // league object
@@ -36,6 +38,7 @@ export default function Welcome({ onJoin, user, socket }) {
     // Manual Player Entry State
     const [manualPlayer, setManualPlayer] = useState({
         name: '',
+        externalId: '',
         category: 'Batter'
     });
 
@@ -103,42 +106,68 @@ export default function Welcome({ onJoin, user, socket }) {
             reader.onload = (evt) => {
                 const text = evt.target.result;
                 const lines = text.split('\n');
+                const knownCategories = ['batter', 'bowler', 'wk', 'all-rounder', 'general'];
+
                 const players = lines
                     .map(line => {
-                        const parts = line.split(',');
-                        if (!parts[0] || parts[0].trim() === "") return null;
+                        const parts = line.split(',').map(s => s.trim());
+                        if (!parts[0] || parts[0] === "") return null;
+
+                        let name = parts[0];
+                        let externalId = '';
+                        let category = 'General';
+
+                        if (parts.length >= 3) {
+                            externalId = parts[1] || '';
+                            category = parts[2] || 'General';
+                        } else if (parts.length === 2) {
+                            if (knownCategories.includes(parts[1].toLowerCase())) {
+                                category = parts[1];
+                            } else {
+                                externalId = parts[1];
+                            }
+                        }
+
                         return {
-                            name: parts[0].trim(),
-                            category: parts[1]?.trim() || 'General',
+                            name,
+                            externalId,
+                            category,
                             basePrice: config.basePrice
                         };
                     })
                     .filter(p => p !== null);
 
-                setConfig(prev => {
-                    let duplicatesFound = false;
-                    const currentBatchNames = new Set();
-                    const newPlayers = players.filter(p => {
-                        const isDuplicateInList = prev.players.some(ep => ep.name.toLowerCase() === p.name.toLowerCase());
-                        const isDuplicateInBatch = currentBatchNames.has(p.name.toLowerCase());
+                // Strict validation: Reject whole CSV if duplicate ExternalId or Name exists
+                const batchNames = new Set();
+                const batchExtIds = new Set();
+                const existingNames = new Set(config.players.map(p => p.name.toLowerCase()));
+                const existingExtIds = new Set(config.players.filter(p => p.externalId).map(p => p.externalId.toLowerCase()));
 
-                        if (isDuplicateInList || isDuplicateInBatch) {
-                            duplicatesFound = true;
-                            return false;
-                        }
-                        currentBatchNames.add(p.name.toLowerCase());
-                        return true;
-                    });
+                for (const p of players) {
+                    const nameLower = p.name.toLowerCase();
+                    const extLower = p.externalId ? p.externalId.toLowerCase() : '';
 
-                    if (duplicatesFound) {
-                        alert("Note: Some players with duplicate names were automatically skipped.");
+                    if (batchNames.has(nameLower) || existingNames.has(nameLower)) {
+                        alert(`CSV Rejected! Validation Error: Duplicate player name "${p.name}" found in uploaded CSV or existing pool.`);
+                        if (e.target) e.target.value = '';
+                        return;
                     }
+                    batchNames.add(nameLower);
 
-                    return {
-                        ...prev,
-                        players: [...prev.players, ...newPlayers]
-                    };
-                });
+                    if (extLower) {
+                        if (batchExtIds.has(extLower) || existingExtIds.has(extLower)) {
+                            alert(`CSV Rejected! Validation Error: Duplicate ExternalId "${p.externalId}" found in uploaded CSV or existing pool.`);
+                            if (e.target) e.target.value = '';
+                            return;
+                        }
+                        batchExtIds.add(extLower);
+                    }
+                }
+
+                setConfig(prev => ({
+                    ...prev,
+                    players: [...prev.players, ...players]
+                }));
             };
             reader.readAsText(file);
         }
@@ -147,21 +176,30 @@ export default function Welcome({ onJoin, user, socket }) {
     const addManualPlayer = () => {
         if (!manualPlayer.name.trim()) return;
         
-        const isDuplicate = config.players.some(p => p.name.toLowerCase() === manualPlayer.name.trim().toLowerCase());
-        if (isDuplicate) {
-            alert("A player with this name already exists in the league list.");
+        const isDuplicateName = config.players.some(p => p.name.toLowerCase() === manualPlayer.name.trim().toLowerCase());
+        if (isDuplicateName) {
+            alert(`Validation Error: A player with name "${manualPlayer.name.trim()}" already exists.`);
             return;
+        }
+
+        if (manualPlayer.externalId.trim()) {
+            const isDuplicateExtId = config.players.some(p => p.externalId && p.externalId.toLowerCase() === manualPlayer.externalId.trim().toLowerCase());
+            if (isDuplicateExtId) {
+                alert(`Validation Error: A player with ExternalId "${manualPlayer.externalId.trim()}" already exists.`);
+                return;
+            }
         }
 
         setConfig(prev => ({
             ...prev,
             players: [...prev.players, {
                 name: manualPlayer.name.trim(),
+                externalId: manualPlayer.externalId.trim(),
                 category: manualPlayer.category,
                 basePrice: config.basePrice
             }]
         }));
-        setManualPlayer({ name: '', category: 'Batter' });
+        setManualPlayer({ name: '', externalId: '', category: 'Batter' });
     };
 
     const removePlayer = (index) => {
@@ -450,7 +488,7 @@ export default function Welcome({ onJoin, user, socket }) {
                                                 const stateColors = { WAITING: '#f59e0b', LIVE: '#10b981', PAUSED: '#3b82f6', ENDED: '#ef4444' };
                                                 return (
                                                     <div key={l.code} className="league-card" style={{ padding: '0.8rem', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', border: '1px solid #222', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                        <div>
+                                                         <div>
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                                                 <strong style={{ color: '#fff' }}>{l.name}</strong>
                                                                 <span style={{
@@ -467,7 +505,12 @@ export default function Welcome({ onJoin, user, socket }) {
                                                             </div>
                                                             <div style={{ fontSize: '0.8rem', color: '#888', marginTop: '0.2rem' }}>Code: <span style={{ color: 'var(--secondary)' }}>{l.code}</span> | Teams: {l.teams?.length || 0}/{l.config?.teamCount || 0}</div>
                                                         </div>
-                                                        <button className="btn btn-primary enter-league-btn" onClick={() => handleAdminEnter(l)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>Enter</button>
+                                                        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                                                            <button className="btn view-dashboard-btn" onClick={() => setViewOnlyLeague(l)} style={{ padding: '0.4rem 0.6rem', fontSize: '0.75rem', background: '#1e293b', color: '#60a5fa', border: '1px solid #334155' }}>
+                                                                📊 Dashboard
+                                                            </button>
+                                                            <button className="btn btn-primary enter-league-btn" onClick={() => handleAdminEnter(l)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>Enter</button>
+                                                        </div>
                                                     </div>
                                                 );
                                             })}
@@ -512,9 +555,14 @@ export default function Welcome({ onJoin, user, socket }) {
                                                                 </div>
                                                             )}
                                                         </div>
-                                                        <button className="btn enter-league-btn" onClick={() => handleCaptainEnter(l)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', background: 'transparent', border: '2px solid var(--secondary)', color: 'var(--secondary)' }}>
-                                                            {myTeam ? 'Rejoin' : 'Join Draft'}
-                                                        </button>
+                                                        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                                                            <button className="btn view-dashboard-btn" onClick={() => setViewOnlyLeague(l)} style={{ padding: '0.4rem 0.6rem', fontSize: '0.75rem', background: '#1e293b', color: '#60a5fa', border: '1px solid #334155' }}>
+                                                                📊 Dashboard
+                                                            </button>
+                                                            <button className="btn enter-league-btn" onClick={() => handleCaptainEnter(l)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', background: 'transparent', border: '2px solid var(--secondary)', color: 'var(--secondary)' }}>
+                                                                {myTeam ? 'Rejoin' : 'Join Draft'}
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                 );
                                             })}
@@ -579,7 +627,7 @@ export default function Welcome({ onJoin, user, socket }) {
 
                     <div style={{ marginTop: '1.5rem', borderTop: '1px solid #333', paddingTop: '1.5rem' }}>
                         <h4 style={{ marginBottom: '1rem', color: 'var(--primary)' }}>Manual Player Entry</h4>
-                        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr auto', gap: '0.5rem', alignItems: 'end' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1.2fr auto', gap: '0.5rem', alignItems: 'end' }}>
                             <div>
                                 <label style={{ fontSize: '0.8rem', display: 'block' }}>Name</label>
                                 <input
@@ -589,6 +637,17 @@ export default function Welcome({ onJoin, user, socket }) {
                                     onChange={e => setManualPlayer({ ...manualPlayer, name: e.target.value })}
                                     style={{ ...inputStyle, marginBottom: 0 }}
                                     placeholder="Player Name"
+                                />
+                            </div>
+                            <div>
+                                <label style={{ fontSize: '0.8rem', display: 'block' }}>External ID</label>
+                                <input
+                                    id="manual-player-external-id"
+                                    type="text"
+                                    value={manualPlayer.externalId}
+                                    onChange={e => setManualPlayer({ ...manualPlayer, externalId: e.target.value })}
+                                    style={{ ...inputStyle, marginBottom: 0 }}
+                                    placeholder="e.g. EXT101"
                                 />
                             </div>
                             <div>
@@ -614,7 +673,7 @@ export default function Welcome({ onJoin, user, socket }) {
                             <div style={{ maxHeight: '150px', overflowY: 'auto', border: '1px solid #333', borderRadius: '4px', background: '#111' }}>
                                 {config.players.map((p, index) => (
                                     <div key={index} style={{ padding: '0.5rem', borderBottom: '1px solid #222', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <span>{p.name} <small style={{ color: '#888' }}>({p.category})</small></span>
+                                        <span>{p.name} {p.externalId && <small style={{ color: '#38bdf8' }}>[{p.externalId}]</small>} <small style={{ color: '#888' }}>({p.category})</small></span>
                                         <button className="btn btn-secondary" onClick={() => removePlayer(index)} style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem' }}>Delete</button>
                                     </div>
                                 ))}
@@ -663,14 +722,14 @@ export default function Welcome({ onJoin, user, socket }) {
                         <p style={{ fontSize: '0.9rem', marginBottom: '1rem', color: '#ccc' }}>
                             Upload a <code>.csv</code> file with player details. Each line should follow this format:
                             <br />
-                            <code>Name, Category</code>
+                            <code>Name, ExternalId, Category</code>
                         </p>
                         <div style={{ background: '#111', padding: '1rem', borderRadius: '4px', border: '1px solid #444', marginBottom: '1.5rem' }}>
                             <div style={{ color: '#666', fontSize: '0.8rem', marginBottom: '0.5rem', borderBottom: '1px solid #333', paddingBottom: '0.3rem' }}>
                                 SAMPLE_PLAYERS.CSV
                             </div>
                             <pre style={{ margin: 0, color: 'var(--secondary)', fontSize: '0.9rem', lineHeight: '1.4' }}>
-                                {`Virat Kohli,Batter\nJasprit Bumrah,Bowler\nBen Stokes,All-Rounder\nMS Dhoni,WK\nRashid Khan,Bowler`}
+                                {`Virat Kohli,VK-18,Batter\nJasprit Bumrah,JB-93,Bowler\nBen Stokes,BS-55,All-Rounder\nMS Dhoni,MSD-7,WK\nRashid Khan,RK-19,Bowler`}
                             </pre>
                         </div>
                         <button className="btn btn-primary" style={{ width: '100%', marginTop: '1.5rem' }} onClick={() => setShowCsvHelp(false)}>Got it!</button>
@@ -703,6 +762,14 @@ export default function Welcome({ onJoin, user, socket }) {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* --- VIEW-ONLY LEAGUE DASHBOARD OVERLAY --- */}
+            {viewOnlyLeague && (
+                <LeagueDashboardView 
+                    league={viewOnlyLeague} 
+                    onClose={() => setViewOnlyLeague(null)} 
+                />
             )}
         </div>
     );
