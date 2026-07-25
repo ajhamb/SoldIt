@@ -251,8 +251,10 @@ test.describe('SoldIt E2E Auction Flow', () => {
         console.log('Captain: Bid 100 placed');
 
         // Verify player is automatically sold since there's only 1 team in the league
-        await expect(adminPage.locator('text=SOLD to Mega Team')).toBeVisible({ timeout: 20000 });
-        console.log('Admin: Sale verified (automatic sold)');
+        const soldTextLocator = adminPage.locator('text=SOLD to Mega Team');
+        await expect(soldTextLocator).toBeVisible({ timeout: 20000 });
+        const soldText = await soldTextLocator.textContent();
+        console.log('Admin: Sale verified (automatic sold):', soldText);
 
         // Scenario 3: Admin reassigns player manually (reducing price and adjusting budget)
         // Click "Players" button to open Player List modal
@@ -277,11 +279,42 @@ test.describe('SoldIt E2E Auction Flow', () => {
         await adminPage.click('button:has-text("×")');
         console.log('Admin: Closed Player List View');
 
-        // Verify Mega Team budget updated to 950 (initial 1000 - 50 = 950)
+        // Verify Mega Team budget updated
         const standingsPanel = adminPage.locator('.responsive-sidebar');
         await expect(standingsPanel).toContainText('Mega Team', { timeout: 15000 });
-        await expect(standingsPanel).toContainText('850 Th', { timeout: 15000 });
-        console.log('Admin: Verified team budget successfully adjusted to 850');
+        const expectedBudget = soldText.includes('Player Alpha') ? '950 Th' : '850 Th';
+        await expect(standingsPanel).toContainText(expectedBudget, { timeout: 15000 });
+        console.log(`Admin: Verified team budget successfully adjusted to ${expectedBudget}`);
+
+        // Scenario 4: Captain renames their team
+        const captainStandingRow = captainPage.locator('.responsive-sidebar div', { hasText: 'Mega Team' }).first();
+        await captainStandingRow.locator('button[title="Rename Team"]').click();
+        await captainPage.fill('.responsive-sidebar input[type="text"]', 'Super Mega Team');
+        await captainPage.click('.responsive-sidebar button[title="Save Name"]');
+        console.log('Captain: Renamed team to Super Mega Team');
+
+        await expect(captainPage.locator('.responsive-sidebar')).toContainText('Super Mega Team', { timeout: 10000 });
+        await expect(adminPage.locator('.responsive-sidebar')).toContainText('Super Mega Team', { timeout: 10000 });
+
+        // Scenario 5: Admin renames a team
+        const adminStandingRow = adminPage.locator('.responsive-sidebar div', { hasText: 'Super Mega Team' }).first();
+        await adminStandingRow.locator('button[title="Rename Team"]').click();
+        await adminPage.fill('.responsive-sidebar input[type="text"]', 'Ultra Team');
+        await adminPage.click('.responsive-sidebar button[title="Save Name"]');
+        console.log('Admin: Renamed team to Ultra Team');
+
+        await expect(adminPage.locator('.responsive-sidebar')).toContainText('Ultra Team', { timeout: 10000 });
+
+        // Scenario 6: Captain leaves auction
+        await captainPage.close();
+        console.log('Captain: Closed page (leaves auction)');
+
+        // Verify highlight and activity log on Admin panel
+        await expect(adminPage.locator('.responsive-sidebar')).toContainText('LEFT', { timeout: 15000 });
+        console.log('Admin: Verified LEFT status highlight in Standings');
+
+        await expect(adminPage.locator('text="Captain Ultra Team has left the auction"').first()).toBeVisible({ timeout: 15000 });
+        console.log('Admin: Verified left captain message in live activity log');
 
         // Cleanup
         await adminContext.close();

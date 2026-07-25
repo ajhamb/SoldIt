@@ -63,25 +63,7 @@ export default function Welcome({ onJoin, user, socket }) {
         };
     }, [user]);
 
-    useEffect(() => {
-        if (loadingLeagues) return;
-        const joinCode = new URLSearchParams(window.location.search).get('joinCode');
-        if (!joinCode) return;
 
-        const matchingAdmin = adminLeagues.find(l => l.code === joinCode.toUpperCase());
-        if (matchingAdmin) {
-            window.history.replaceState({}, document.title, window.location.pathname);
-            handleAdminEnter(matchingAdmin);
-            return;
-        }
-
-        const matchingInvited = invitedLeagues.find(l => l.code === joinCode.toUpperCase());
-        if (matchingInvited) {
-            window.history.replaceState({}, document.title, window.location.pathname);
-            handleCaptainEnter(matchingInvited);
-            return;
-        }
-    }, [adminLeagues, invitedLeagues, loadingLeagues]);
 
     // Google Login/Logout handlers
     const handleGoogleLogin = async () => {

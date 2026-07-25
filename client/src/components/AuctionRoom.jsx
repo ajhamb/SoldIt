@@ -9,6 +9,8 @@ import { supabase } from '../supabaseClient';
 export default function AuctionRoom({ socket, role, name, leagueCode, leagueState }) {
     const [showPlayers, setShowPlayers] = useState(false);
     const [showRules, setShowRules] = useState(false);
+    const [editingTeamId, setEditingTeamId] = useState(null);
+    const [newTeamNameVal, setNewTeamNameVal] = useState('');
     // One-time onboarding modal for new leagues
     const [showSuccess, setShowSuccess] = useState(false);
 
@@ -62,6 +64,24 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
 
     // Find my team if captain
     const myTeam = role === 'CAPTAIN' ? teams.find(t => t.name === name) : null;
+
+    const canEditName = (t) => {
+        if (role === 'ADMIN') return true;
+        if (myTeam && t.name === myTeam.name) return true;
+        return false;
+    };
+
+    const handleSaveTeamName = (oldName) => {
+        const cleanName = newTeamNameVal.trim();
+        if (!cleanName) return;
+        socket.emit('UPDATE_TEAM_NAME', { leagueCode, oldName, newName: cleanName }, (response) => {
+            if (response && response.error) {
+                alert(response.error);
+            } else {
+                setEditingTeamId(null);
+            }
+        });
+    };
 
     // Squad Stats
     const getSquadCount = (team) => team.squad?.length || 0;
@@ -182,20 +202,6 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
                                 {role === 'ADMIN' && (
                                     <div className="card" style={{ marginTop: '2rem', padding: '1.5rem', background: 'rgba(0,0,0,0.2)', border: '1px solid #333', textAlign: 'left', width: '100%', maxWidth: '500px', margin: '2rem auto' }}>
                                         <h3 style={{ margin: '0 0 1rem 0', color: 'var(--primary)' }}>Invite Co-Admins & Captains</h3>
-                                        
-                                        <div style={{ marginBottom: '1.2rem', padding: '0.6rem 0.8rem', background: 'rgba(255,255,255,0.02)', borderRadius: '4px', border: '1px solid #333', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
-                                            <span style={{ color: '#aaa' }}>Invite Link: <strong style={{ color: 'var(--secondary)', wordBreak: 'break-all' }}>{`${window.location.origin}/?joinCode=${leagueCode}`}</strong></span>
-                                            <button
-                                                onClick={() => {
-                                                    navigator.clipboard.writeText(`${window.location.origin}/?joinCode=${leagueCode}`);
-                                                    alert("Invite link copied to clipboard!");
-                                                }}
-                                                className="btn-secondary"
-                                                style={{ padding: '0.2rem 0.6rem', fontSize: '0.75rem', cursor: 'pointer' }}
-                                            >
-                                                📋 Copy Link
-                                            </button>
-                                        </div>
 
                                         <form onSubmit={handleInvite} style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
                                             <input 
@@ -344,17 +350,91 @@ export default function AuctionRoom({ socket, role, name, leagueCode, leagueStat
                         {teams && teams.map(t => (
                             <div key={t.id} style={{
                                 padding: '0.8rem',
-                                background: activeTurn === t.name ? 'rgba(255, 215, 0, 0.1)' : '#222',
+                                background: t.status === 'LEFT' 
+                                    ? 'rgba(239, 68, 68, 0.12)' 
+                                    : (activeTurn === t.name ? 'rgba(255, 215, 0, 0.1)' : '#222'),
                                 borderRadius: '4px',
-                                borderLeft: `4px solid ${activeTurn === t.name ? 'var(--primary)' : 'transparent'}`,
-                                borderRight: `4px solid ${t.id === (currentBid?.holder) ? 'var(--secondary)' : 'transparent'}`
+                                border: t.status === 'LEFT' ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid transparent',
+                                borderLeft: `4px solid ${activeTurn === t.name ? 'var(--primary)' : (t.status === 'LEFT' ? '#ef4444' : 'transparent')}`,
+                                borderRight: `4px solid ${t.id === (currentBid?.holder) ? 'var(--secondary)' : 'transparent'}`,
+                                transition: 'all 0.3s ease'
                             }}>
-                                <div style={{ fontWeight: 'bold', fontSize: '1rem', display: 'flex', justifyContent: 'space-between' }}>
-                                    <span>
-                                        {t.name}
-                                        {activeTurn === t.name && <span style={{ marginLeft: '0.5rem', fontSize: '0.8rem' }}>👉</span>}
-                                    </span>
-                                    <span style={{ color: 'var(--primary)' }}>{t.budget} Th</span>
+                                <div style={{ fontWeight: 'bold', fontSize: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    {editingTeamId === t.id ? (
+                                        <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center', width: '100%' }}>
+                                            <input
+                                                type="text"
+                                                value={newTeamNameVal}
+                                                onChange={e => setNewTeamNameVal(e.target.value)}
+                                                style={{
+                                                    flex: 1,
+                                                    padding: '0.2rem 0.4rem',
+                                                    background: '#111',
+                                                    color: '#fff',
+                                                    border: '1px solid #555',
+                                                    borderRadius: '3px',
+                                                    fontSize: '0.85rem',
+                                                    outline: 'none'
+                                                }}
+                                                autoFocus
+                                                onKeyDown={e => {
+                                                    if (e.key === 'Enter') handleSaveTeamName(t.name);
+                                                    if (e.key === 'Escape') setEditingTeamId(null);
+                                                }}
+                                            />
+                                            <button
+                                                onClick={() => handleSaveTeamName(t.name)}
+                                                style={{ background: '#22c55e', border: 'none', color: '#fff', padding: '0.2rem 0.4rem', borderRadius: '3px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
+                                                title="Save Name"
+                                            >
+                                                ✓
+                                            </button>
+                                            <button
+                                                onClick={() => setEditingTeamId(null)}
+                                                style={{ background: '#ef4444', border: 'none', color: '#fff', padding: '0.2rem 0.4rem', borderRadius: '3px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
+                                                title="Cancel"
+                                            >
+                                                ✕
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '0.5rem' }}>
+                                            <span style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.2rem' }}>
+                                                <span style={{ color: t.status === 'LEFT' ? '#ef4444' : '#fff' }}>{t.name}</span>
+                                                {activeTurn === t.name && <span style={{ marginLeft: '0.2rem', fontSize: '0.8rem' }}>👉</span>}
+                                                {t.status === 'LEFT' && (
+                                                    <span style={{
+                                                        marginLeft: '0.4rem',
+                                                        fontSize: '0.65rem',
+                                                        background: 'rgba(239, 68, 68, 0.2)',
+                                                        color: '#ef4444',
+                                                        border: '1px solid #ef4444',
+                                                        padding: '1px 4px',
+                                                        borderRadius: '3px',
+                                                        fontWeight: 'bold',
+                                                        letterSpacing: '0.5px'
+                                                    }}>
+                                                        LEFT
+                                                    </span>
+                                                )}
+                                            </span>
+                                            <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                                                <span style={{ color: 'var(--primary)' }}>{t.budget} Th</span>
+                                                {canEditName(t) && (
+                                                    <button
+                                                        onClick={() => {
+                                                            setEditingTeamId(t.id);
+                                                            setNewTeamNameVal(t.name);
+                                                        }}
+                                                        style={{ background: 'transparent', border: 'none', color: '#888', cursor: 'pointer', padding: '0.2rem', fontSize: '0.85rem' }}
+                                                        title="Rename Team"
+                                                    >
+                                                        ✏️
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.3rem', fontSize: '0.8rem' }}>
                                     <span className="text-muted">Squad: {getSquadCount(t)} / {getMaxSquad()}</span>

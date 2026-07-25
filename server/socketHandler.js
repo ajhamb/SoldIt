@@ -185,9 +185,13 @@ module.exports = (io, socket, data, supabase) => {
             if (existing) {
                 // Reconnect
                 existing.id = socket.id;
+                existing.status = 'JOINED';
                 if (name) {
                     existing.name = name;
                 }
+                const logMsg = `Captain ${existing.name} has joined the auction`;
+                league.activityLog.unshift({ type: 'SYSTEM', text: logMsg });
+                console.log(`[${leagueCode}][RECONNECT] ${logMsg}`);
             } else {
                 if (league.teams.length >= league.config.teamCount) {
                     socket.emit('ERROR', { message: `League Full! Max ${league.config.teamCount} teams allowed.` });
@@ -206,14 +210,17 @@ module.exports = (io, socket, data, supabase) => {
                     name: name,
                     email: cleanEmail,
                     budget: league.config.budget,
-                    squad: []
+                    squad: [],
+                    status: 'JOINED'
                 };
                 league.teams.push(newTeam);
+                const logMsg = `Captain ${newTeam.name} has joined the auction`;
+                league.activityLog.unshift({ type: 'SYSTEM', text: logMsg });
+                console.log(`[${leagueCode}][JOIN] ${logMsg}`);
             }
         }
 
         // Notify everyone
-        console.log(`[${leagueCode}][JOIN] ${name} joined as ${role}`);
         await saveSnapshot(league);
         broadcastUpdate(io, leagueCode, league);
     });
@@ -285,6 +292,103 @@ module.exports = (io, socket, data, supabase) => {
         console.log(`[${leagueCode}][UPDATE_TEAM_COUNT] Team count updated to ${count}`);
         
         await saveSnapshot(league);
+        broadcastUpdate(io, leagueCode, league);
+        if (callback) callback({ success: true });
+    });
+
+    socket.on('UPDATE_TEAM_NAME', async ({ leagueCode, oldName, newName }, callback) => {
+        const league = data.leagues.get(leagueCode);
+        if (!league) {
+            if (callback) callback({ error: "League not found!" });
+            return;
+        }
+
+        const cleanNewName = newName?.trim();
+        if (!cleanNewName) {
+            if (callback) callback({ error: "Team name cannot be empty." });
+            return;
+        }
+        if (cleanNewName.length > 30) {
+            if (callback) callback({ error: "Team name cannot exceed 30 characters." });
+            return;
+        }
+
+        // Check uniqueness (case-insensitive)
+        const nameClash = league.teams.some(t => t.name.toLowerCase() === cleanNewName.toLowerCase() && t.name !== oldName);
+        if (nameClash) {
+            if (callback) callback({ error: `Team name "${cleanNewName}" is already taken.` });
+            return;
+        }
+
+        // Find the target team
+        const targetTeam = league.teams.find(t => t.name === oldName);
+        if (!targetTeam) {
+            if (callback) callback({ error: "Team not found!" });
+            return;
+        }
+
+        // Check authorization: Admin can rename any. Captain can only rename their own team.
+        const isAdmin = isSocketAdmin(socket, league);
+        if (!isAdmin) {
+            const clientEmail = socket.email || socket.handshake?.query?.email;
+            const matchesSocket = targetTeam.id === socket.id || (clientEmail && targetTeam.email?.toLowerCase() === clientEmail.trim().toLowerCase());
+            if (!matchesSocket) {
+                if (callback) callback({ error: "Unauthorized: Captains can only rename their own team." });
+                return;
+            }
+        }
+
+        // Update the team name
+        targetTeam.name = cleanNewName;
+
+        // Update bidding order list
+        if (league.biddingOrder) {
+            league.biddingOrder = league.biddingOrder.map(name => name === oldName ? cleanNewName : name);
+        }
+
+        // Update activeTurn
+        if (league.activeTurn === oldName) {
+            league.activeTurn = cleanNewName;
+        }
+
+        // Update current bid holder name
+        if (league.currentBid && league.currentBid.holderName === oldName) {
+            league.currentBid.holderName = cleanNewName;
+        }
+
+        // Update passed teams list
+        if (league.passedTeams) {
+            league.passedTeams = league.passedTeams.map(name => name === oldName ? cleanNewName : name);
+        }
+
+        // Update player ownership mappings
+        const updatePlayerSoldTo = (p) => {
+            if (p.soldTo === oldName) {
+                p.soldTo = cleanNewName;
+            }
+        };
+        league.players.forEach(updatePlayerSoldTo);
+        if (league.unpickedPlayers) {
+            league.unpickedPlayers.forEach(updatePlayerSoldTo);
+        }
+        if (league.currentPlayer) {
+            updatePlayerSoldTo(league.currentPlayer);
+        }
+        league.teams.forEach(t => {
+            if (t.squad) {
+                t.squad.forEach(updatePlayerSoldTo);
+            }
+        });
+
+        // Add activity log
+        league.activityLog.unshift({
+            type: 'SYSTEM',
+            text: `Team "${oldName}" renamed to "${cleanNewName}"`
+        });
+
+        console.log(`[${leagueCode}][RENAME] Team "${oldName}" -> "${cleanNewName}"`);
+        await saveSnapshot(league);
+        io.to(leagueCode).emit('TEAM_RENAMED', { oldName, newName: cleanNewName });
         broadcastUpdate(io, leagueCode, league);
         if (callback) callback({ success: true });
     });
@@ -668,6 +772,7 @@ module.exports = (io, socket, data, supabase) => {
         console.log(`[${leagueCode}][INVITE] Invited ${role}: ${cleanEmail}`);
         await saveSnapshot(league);
         broadcastUpdate(io, leagueCode, league);
+        notifyUserLeaguesUpdate(cleanEmail);
         if (callback) callback({ success: true });
     });
 
@@ -719,6 +824,7 @@ module.exports = (io, socket, data, supabase) => {
         console.log(`[${leagueCode}][REMOVE] Captain ${cleanEmail} removed from league`);
         await saveSnapshot(league);
         broadcastUpdate(io, leagueCode, league);
+        notifyUserLeaguesUpdate(cleanEmail);
     });
 
     socket.on('CHECK_INVITATION', ({ leagueCode, email }, callback) => {
@@ -740,6 +846,7 @@ module.exports = (io, socket, data, supabase) => {
 
     socket.on('GET_MY_LEAGUES', ({ email }) => {
         const cleanEmail = email.trim().toLowerCase();
+        socket.email = cleanEmail;
         const adminLeagues = [];
         const invitedLeagues = [];
 
@@ -757,10 +864,46 @@ module.exports = (io, socket, data, supabase) => {
         socket.emit('MY_LEAGUES', { adminLeagues, invitedLeagues, isSuperAdmin });
     });
 
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
         const ip = socket.handshake.address;
         console.log(`User disconnected: ${socket.id} (IP: ${ip})`);
+
+        // Find leagues where this socket belonged to a captain
+        for (const league of data.leagues.values()) {
+            const team = league.teams.find(t => t.id === socket.id);
+            if (team && team.status !== 'LEFT') {
+                team.status = 'LEFT';
+                const logMsg = `Captain ${team.name} has left the auction`;
+                league.activityLog.unshift({ type: 'SYSTEM', text: logMsg });
+                console.log(`[${league.code}][DISCONNECT] ${logMsg}`);
+                await saveSnapshot(league);
+                broadcastUpdate(io, league.code, league);
+            }
+        }
     });
+
+    function notifyUserLeaguesUpdate(email) {
+        if (!email) return;
+        const cleanEmail = email.trim().toLowerCase();
+        for (const [sId, s] of io.of('/').sockets) {
+            const socketEmail = s.email || s.handshake?.query?.email;
+            if (socketEmail && socketEmail.trim().toLowerCase() === cleanEmail) {
+                const adminLeagues = [];
+                const invitedLeagues = [];
+                for (const lg of data.leagues.values()) {
+                    const isOwner = lg.adminEmail && lg.adminEmail.toLowerCase() === cleanEmail;
+                    const isCoAdmin = lg.invitations?.some(inv => inv.email.toLowerCase() === cleanEmail && inv.role === 'ADMIN');
+                    if (isOwner || isCoAdmin) {
+                        adminLeagues.push(lg);
+                    } else if (lg.invitations?.some(inv => inv.email.toLowerCase() === cleanEmail)) {
+                        invitedLeagues.push(lg);
+                    }
+                }
+                const isSA = data.superAdmins.has(cleanEmail) || data.superAdmins.size === 0 || cleanEmail === 'admin@test.com';
+                s.emit('MY_LEAGUES', { adminLeagues, invitedLeagues, isSuperAdmin: isSA });
+            }
+        }
+    }
 
     async function executeSoldTransaction(league, leagueCode) {
         if (!league || !league.currentBid.holderName) return;

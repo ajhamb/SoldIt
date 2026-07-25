@@ -149,6 +149,20 @@ function App() {
       setLeagueState(prev => prev ? { ...prev, ...newState } : newState);
     });
 
+    socket.on('TEAM_RENAMED', ({ oldName, newName }) => {
+      setName(prev => prev === oldName ? newName : prev);
+      const session = localStorage.getItem('auction_session');
+      if (session) {
+        try {
+          const parsed = JSON.parse(session);
+          if (parsed.name === oldName) {
+            parsed.name = newName;
+            localStorage.setItem('auction_session', JSON.stringify(parsed));
+          }
+        } catch (e) {}
+      }
+    });
+
     socket.on('ADMIN_RESTORE', (state) => {
       setLeagueState(state);
       if (state && state.code) {
