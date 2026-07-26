@@ -505,12 +505,7 @@ export default function Welcome({ onJoin, user, socket }) {
                                                             </div>
                                                             <div style={{ fontSize: '0.8rem', color: '#888', marginTop: '0.2rem' }}>Code: <span style={{ color: 'var(--secondary)' }}>{l.code}</span> | Teams: {l.teams?.length || 0}/{l.config?.teamCount || 0}</div>
                                                         </div>
-                                                        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                                                            <button className="btn view-dashboard-btn" onClick={() => setViewOnlyLeague(l)} style={{ padding: '0.4rem 0.6rem', fontSize: '0.75rem', background: '#1e293b', color: '#60a5fa', border: '1px solid #334155' }}>
-                                                                📊 Dashboard
-                                                            </button>
-                                                            <button className="btn btn-primary enter-league-btn" onClick={() => handleAdminEnter(l)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>Enter</button>
-                                                        </div>
+                                                        <button className="btn btn-primary enter-league-btn" onClick={() => handleAdminEnter(l)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>Enter</button>
                                                     </div>
                                                 );
                                             })}
@@ -555,14 +550,9 @@ export default function Welcome({ onJoin, user, socket }) {
                                                                 </div>
                                                             )}
                                                         </div>
-                                                        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                                                            <button className="btn view-dashboard-btn" onClick={() => setViewOnlyLeague(l)} style={{ padding: '0.4rem 0.6rem', fontSize: '0.75rem', background: '#1e293b', color: '#60a5fa', border: '1px solid #334155' }}>
-                                                                📊 Dashboard
-                                                            </button>
-                                                            <button className="btn enter-league-btn" onClick={() => handleCaptainEnter(l)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', background: 'transparent', border: '2px solid var(--secondary)', color: 'var(--secondary)' }}>
-                                                                {myTeam ? 'Rejoin' : 'Join Draft'}
-                                                            </button>
-                                                        </div>
+                                                        <button className="btn enter-league-btn" onClick={() => handleCaptainEnter(l)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', background: 'transparent', border: '2px solid var(--secondary)', color: 'var(--secondary)' }}>
+                                                            {myTeam ? 'Rejoin' : 'Join Draft'}
+                                                        </button>
                                                     </div>
                                                 );
                                             })}
