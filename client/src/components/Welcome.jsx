@@ -106,7 +106,15 @@ export default function Welcome({ onJoin, user, socket }) {
             reader.onload = (evt) => {
                 const text = evt.target.result;
                 const lines = text.split('\n');
-                const knownCategories = ['batter', 'bowler', 'wk', 'all-rounder', 'general'];
+                const categoryMap = {
+                    'batter': 'Batter',
+                    'bowler': 'Bowler',
+                    'wk': 'WK',
+                    'all-rounder': 'All-Rounder',
+                    'all rounder': 'All-Rounder',
+                    'allrounder': 'All-Rounder',
+                    'general': 'General'
+                };
 
                 const players = lines
                     .map(line => {
@@ -115,16 +123,19 @@ export default function Welcome({ onJoin, user, socket }) {
 
                         let name = parts[0];
                         let externalId = '';
-                        let category = 'General';
+                        let category = 'All-Rounder';
 
                         if (parts.length >= 3) {
                             externalId = parts[1] || '';
-                            category = parts[2] || 'General';
+                            const rawCat = parts[2] ? parts[2].trim() : '';
+                            category = rawCat ? (categoryMap[rawCat.toLowerCase()] || rawCat) : 'All-Rounder';
                         } else if (parts.length === 2) {
-                            if (knownCategories.includes(parts[1].toLowerCase())) {
-                                category = parts[1];
+                            const p1Lower = parts[1].toLowerCase();
+                            if (categoryMap[p1Lower]) {
+                                category = categoryMap[p1Lower];
                             } else {
                                 externalId = parts[1];
+                                category = 'All-Rounder';
                             }
                         }
 
@@ -713,6 +724,8 @@ export default function Welcome({ onJoin, user, socket }) {
                             Upload a <code>.csv</code> file with player details. Each line should follow this format:
                             <br />
                             <code>Name, ExternalId, Category</code>
+                            <br />
+                            <small style={{ color: '#888' }}>*(Category is optional and defaults to <strong>All-Rounder</strong> if omitted)*</small>
                         </p>
                         <div style={{ background: '#111', padding: '1rem', borderRadius: '4px', border: '1px solid #444', marginBottom: '1.5rem' }}>
                             <div style={{ color: '#666', fontSize: '0.8rem', marginBottom: '0.5rem', borderBottom: '1px solid #333', paddingBottom: '0.3rem' }}>
