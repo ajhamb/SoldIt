@@ -122,6 +122,8 @@ async function hydrateFromLocalBackups() {
     }
 }
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function hydrateFromDB() {
     // Seed Super Admins from environment variable
     const envSuperAdmins = (process.env.SUPER_ADMIN_EMAILS || '')
@@ -133,28 +135,48 @@ async function hydrateFromDB() {
     let success = false;
     if (supabase) {
         console.log("--- HYDRATING FROM SUPABASE ---");
-        try {
-            const { data: dbLeagues, error } = await supabase.from('leagues').select('*');
-            if (error) {
-                console.error("Hydration failed:", error.message);
-            } else if (dbLeagues) {
-                dbLeagues.forEach(row => {
-                    data.leagues.set(row.code, row.data);
-                });
-                console.log(`Successfully hydrated ${dbLeagues.length} leagues.`);
-                success = true;
-            }
+        const MAX_RETRIES = 5;
 
-            // Hydrate Super Admins from DB table
-            const { data: dbSuperAdmins, error: saError } = await supabase.from('super_admins').select('email');
-            if (!saError && dbSuperAdmins) {
-                dbSuperAdmins.forEach(row => {
-                    if (row.email) data.superAdmins.add(row.email.trim().toLowerCase());
-                });
-                console.log(`Successfully hydrated ${data.superAdmins.size} super admins.`);
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                const { data: dbLeagues, error } = await supabase.from('leagues').select('*');
+                if (error) {
+                    console.error(`Hydration attempt ${attempt}/${MAX_RETRIES} failed: ${error.message}`);
+                    if (attempt < MAX_RETRIES) {
+                        const delayMs = attempt * 2000;
+                        console.log(`Waiting ${delayMs / 1000}s before retrying hydration (mitigating potential clock drift/JWT skew)...`);
+                        await sleep(delayMs);
+                        continue;
+                    }
+                } else if (dbLeagues) {
+                    dbLeagues.forEach(row => {
+                        data.leagues.set(row.code, row.data);
+                    });
+                    console.log(`Successfully hydrated ${dbLeagues.length} leagues.`);
+                    success = true;
+                    break;
+                }
+            } catch (e) {
+                console.error(`Hydration attempt ${attempt}/${MAX_RETRIES} error:`, e.message || e);
+                if (attempt < MAX_RETRIES) {
+                    await sleep(attempt * 2000);
+                }
             }
-        } catch (e) {
-            console.error("Hydration error:", e);
+        }
+
+        // Hydrate Super Admins from DB table
+        if (success) {
+            try {
+                const { data: dbSuperAdmins, error: saError } = await supabase.from('super_admins').select('email');
+                if (!saError && dbSuperAdmins) {
+                    dbSuperAdmins.forEach(row => {
+                        if (row.email) data.superAdmins.add(row.email.trim().toLowerCase());
+                    });
+                    console.log(`Successfully hydrated ${data.superAdmins.size} super admins.`);
+                }
+            } catch (e) {
+                console.error("Super admin hydration error:", e.message || e);
+            }
         }
     } else {
         console.log("Supabase not configured.");
