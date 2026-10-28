@@ -495,7 +495,13 @@ export default function Welcome({ onJoin, user, socket }) {
                                         <p className="text-muted" style={{ fontSize: '0.9rem' }}>You haven't created any leagues yet.</p>
                                     ) : (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '350px', overflowY: 'auto' }}>
-                                            {adminLeagues.map(l => {
+                                            {[...adminLeagues]
+                                                .sort((a, b) => {
+                                                    const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                                                    const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                                                    return timeB - timeA;
+                                                })
+                                                .map(l => {
                                                 const stateColors = { WAITING: '#f59e0b', LIVE: '#10b981', PAUSED: '#3b82f6', ENDED: '#ef4444' };
                                                 return (
                                                     <div key={l.code} className="league-card" style={{ padding: '0.8rem', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', border: '1px solid #222', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

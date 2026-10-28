@@ -997,6 +997,12 @@ module.exports = (io, socket, data, supabase) => {
             }
         }
 
+        adminLeagues.sort((a, b) => {
+            const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return timeB - timeA;
+        });
+
         const isSuperAdmin = data.superAdmins.has(cleanEmail) || data.superAdmins.size === 0 || cleanEmail === 'admin@test.com';
         socket.emit('MY_LEAGUES', { adminLeagues, invitedLeagues, isSuperAdmin });
     });
@@ -1036,6 +1042,11 @@ module.exports = (io, socket, data, supabase) => {
                         invitedLeagues.push(lg);
                     }
                 }
+                adminLeagues.sort((a, b) => {
+                    const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                    const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                    return timeB - timeA;
+                });
                 const isSA = data.superAdmins.has(cleanEmail) || data.superAdmins.size === 0 || cleanEmail === 'admin@test.com';
                 s.emit('MY_LEAGUES', { adminLeagues, invitedLeagues, isSuperAdmin: isSA });
             }
