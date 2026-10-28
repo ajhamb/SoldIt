@@ -728,6 +728,135 @@ module.exports = (io, socket, data, supabase) => {
         if (callback) callback({ success: true, player });
     });
 
+    socket.on('ADMIN_ADD_PLAYER', async ({ leagueCode, name, externalId, category, basePrice }, callback) => {
+        const league = data.leagues.get(leagueCode);
+        if (!league) {
+            if (callback) callback({ error: "League not found!" });
+            return;
+        }
+
+        if (!isSocketAdmin(socket, league)) {
+            if (callback) callback({ error: "Unauthorized: Only an Admin can add players." });
+            return;
+        }
+
+        const cleanName = name ? name.trim() : '';
+        if (!cleanName) {
+            if (callback) callback({ error: "Player name is required!" });
+            return;
+        }
+
+        // Check duplicate name (case-insensitive)
+        const duplicateName = league.players.find(p => p.name.toLowerCase() === cleanName.toLowerCase());
+        if (duplicateName) {
+            const err = `Validation Error: A player with name "${cleanName}" already exists!`;
+            if (callback) callback({ error: err });
+            return;
+        }
+
+        // Check duplicate externalId (case-insensitive)
+        const cleanExt = externalId ? externalId.trim() : '';
+        if (cleanExt) {
+            const duplicateExt = league.players.find(p => p.externalId && p.externalId.trim().toLowerCase() === cleanExt.toLowerCase());
+            if (duplicateExt) {
+                const err = `Validation Error: ExternalId "${cleanExt}" is already assigned to player "${duplicateExt.name}"!`;
+                if (callback) callback({ error: err });
+                return;
+            }
+        }
+
+        const maxId = league.players.reduce((max, p) => Math.max(max, p.id || 0), 0);
+        const newPlayer = {
+            id: maxId + 1,
+            externalId: cleanExt,
+            name: cleanName,
+            category: category || 'All-Rounder',
+            basePrice: (basePrice && !isNaN(parseInt(basePrice))) ? parseInt(basePrice) : (league.config?.basePrice || 50),
+            status: 'WAITING'
+        };
+
+        league.players.push(newPlayer);
+        if (!league.unpickedPlayers) league.unpickedPlayers = [];
+        if (league.state === 'LIVE' && league.unpickedPlayers.length > 0) {
+            const randomIdx = Math.floor(Math.random() * (league.unpickedPlayers.length + 1));
+            league.unpickedPlayers.splice(randomIdx, 0, { ...newPlayer });
+        } else {
+            league.unpickedPlayers.push({ ...newPlayer });
+        }
+
+        league.activityLog.unshift({
+            type: 'SYSTEM',
+            text: `ADMIN: Added player ${newPlayer.name} (${newPlayer.category})`
+        });
+        console.log(`[${leagueCode}][ADD_PLAYER] Admin added ${newPlayer.name} (ID: ${newPlayer.id}, ExtID: ${newPlayer.externalId || 'N/A'})`);
+
+        await saveSnapshot(league);
+        broadcastUpdate(io, leagueCode, league);
+        if (callback) callback({ success: true, player: newPlayer });
+    });
+
+    socket.on('ADMIN_REMOVE_PLAYER', async ({ leagueCode, playerId }, callback) => {
+        const league = data.leagues.get(leagueCode);
+        if (!league) {
+            if (callback) callback({ error: "League not found!" });
+            return;
+        }
+
+        if (!isSocketAdmin(socket, league)) {
+            if (callback) callback({ error: "Unauthorized: Only an Admin can remove players." });
+            return;
+        }
+
+        const playerIndex = league.players.findIndex(p => p.id === playerId);
+        if (playerIndex === -1) {
+            if (callback) callback({ error: "Player not found!" });
+            return;
+        }
+
+        const player = league.players[playerIndex];
+
+        // If player was SOLD, refund the team and remove from squad
+        if (player.status === 'SOLD' && player.soldTo) {
+            const team = league.teams.find(t => t.name === player.soldTo);
+            if (team) {
+                team.squad = (team.squad || []).filter(p => p.id !== player.id);
+                team.budget += (player.soldAt || 0);
+                console.log(`[${leagueCode}][REMOVE_PLAYER] Refunded ${team.name} ${player.soldAt}`);
+            }
+        }
+
+        // Remove from league.players
+        league.players.splice(playerIndex, 1);
+
+        // Remove from league.unpickedPlayers
+        if (league.unpickedPlayers) {
+            league.unpickedPlayers = league.unpickedPlayers.filter(p => p.id !== playerId);
+        }
+
+        const wasCurrentPlayer = league.currentPlayer && league.currentPlayer.id === playerId;
+
+        league.activityLog.unshift({
+            type: 'SYSTEM',
+            text: `ADMIN: Removed player ${player.name} from the league`
+        });
+        console.log(`[${leagueCode}][REMOVE_PLAYER] Admin removed ${player.name} (ID: ${player.id})`);
+
+        if (wasCurrentPlayer) {
+            if (league.state === 'LIVE') {
+                pickNextPlayer(league, io, leagueCode);
+                await saveSnapshot(league);
+                if (callback) callback({ success: true });
+                return;
+            } else {
+                league.currentPlayer = null;
+            }
+        }
+
+        await saveSnapshot(league);
+        broadcastUpdate(io, leagueCode, league);
+        if (callback) callback({ success: true });
+    });
+
     // --- CAPTAIN PASS ---
     socket.on('CAPTAIN_PASS', async ({ leagueCode }) => {
         const league = data.leagues.get(leagueCode);
